@@ -1,0 +1,44 @@
+Create a basic local ingestion pipeline using Python FastAPI.
+
+For now, do not add vector database storage yet.
+
+The pipeline should:
+1. accept file upload through an API endpoint
+2. save the file temporarily
+3. extract text from the uploaded file
+4. clean/preprocess the text
+5. split the text into chunks
+6. return the extracted text and chunks as JSON response
+
+Requirements:
+- use FastAPI
+- support local testing in Swagger/Postman
+- keep code modular and simple
+- include folder structure
+- include .env.example
+- include requirements.txt
+- include logging and error handling
+- support PDF, DOCX, and TXT
+- add comments in code
+- generate step-by-step local setup instructions
+
+Expected modules:
+- main app
+- upload route
+- file handler
+- text extractor
+- text cleaner
+- chunking service
+- config
+- logger
+- helper utilities
+
+Flow:
+Upload file → save temp file → extract text → clean text → chunk text → return response
+
+Please generate:
+1. folder structure
+2. code files
+3. explanation of each file
+4. how to run locally
+5. sample request and response
