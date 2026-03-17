@@ -1,0 +1,13 @@
+Step-by-step process for the ingestion pipeline:
+
+1. Receive file upload from user (PDF, DOCX, or TXT).
+2. Save the uploaded file temporarily on disk.
+3. Extract text from the uploaded file.
+4. Clean and preprocess the extracted text.
+5. Split the cleaned text into smaller chunks.
+6. Return the cleaned text and chunks as a JSON response.
+7. Delete the temporary file after processing.
+
+You can update this file to add more steps or notes as your pipeline evolves.
+
+2026/03/17
