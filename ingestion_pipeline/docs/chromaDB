@@ -1,0 +1,190 @@
+# ChromaDB Vector Database Setup (Server Mode)
+
+This guide explains how to run **ChromaDB as a standalone vector database server** for the GetMee chatbot project.
+
+The Chroma server will be used by:
+
+* Ingestion Pipeline API (store document embeddings)
+* Chat Backend API (retrieve embeddings for RAG)
+
+Both services connect to the same Chroma server.
+
+---
+
+# 1. Prerequisites
+
+Install the following:
+
+* Docker Desktop
+* Python 3.10+
+* VS Code
+
+Make sure **Docker Desktop is running** before starting.
+
+---
+
+# 2. Project Folder Structure
+
+Create the following folder inside the project:
+
+```
+getmee-project/
+│
+├── backend/
+├── ingestion/
+├── chroma/
+│   ├── docker-compose.yml
+│   └── chroma-data/
+```
+
+`chroma-data` stores the vector database files.
+
+---
+
+# 3. Create docker-compose.yml
+
+Inside the `chroma` folder create:
+
+```
+docker-compose.yml
+```
+
+Paste this configuration:
+
+```
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./chroma-data:/data
+```
+
+This runs ChromaDB on **port 8000**.
+
+---
+
+# 4. Start ChromaDB Server
+
+Open a terminal in the `chroma` folder and run:
+
+```
+docker compose up -d
+```
+
+Docker will start the ChromaDB server.
+
+---
+
+# 5. Verify Server
+
+Check the server by opening:
+
+```
+http://localhost:8000/docs
+```
+
+Or run:
+
+```
+curl http://localhost:8000/api/v1/heartbeat
+```
+
+If you get a response, the server is running.
+
+---
+
+# 6. Install Chroma Python Client
+
+In your backend or ingestion project:
+
+```
+pip install chromadb
+```
+
+---
+
+# 7. Connect to ChromaDB from Python
+
+Create a file:
+
+```
+chroma_client.py
+```
+
+Example code:
+
+```
+import chromadb
+
+client = chromadb.HttpClient(
+    host="localhost",
+    port=8000
+)
+
+collection = client.get_or_create_collection(
+    name="getmee_docs"
+)
+```
+
+The collection will be created automatically if it does not exist.
+
+---
+
+# 8. Test Connection
+
+Create a test script:
+
+```
+test_chroma.py
+```
+
+```
+import chromadb
+
+client = chromadb.HttpClient(host="localhost", port=8000)
+
+collection = client.get_or_create_collection("getmee_docs")
+
+collection.add(
+    ids=["doc1"],
+    documents=["This is a test document"]
+)
+
+print("Current document count:", collection.count())
+```
+
+Run:
+
+```
+python test_chroma.py
+```
+
+---
+
+# 9. How It Fits the Architecture
+
+```
+React Chat Widget
+        |
+        v
+Chat Backend API
+        |
+        v
+   ChromaDB Server
+        ^
+        |
+Ingestion Pipeline API
+```
+
+The ingestion pipeline stores document embeddings in ChromaDB.
+
+The backend retrieves relevant documents for chatbot responses.
+
+---
+
+# 10. Server Endpoint
+
+Local

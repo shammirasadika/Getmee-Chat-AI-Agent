@@ -1,0 +1,143 @@
+# ChromaDB Setup (Option 1 — Local Development)
+
+This guide explains how to run **ChromaDB locally** and connect it to the **Ingestion Pipeline API** during development.
+
+This option is recommended when:
+
+* The ingestion API runs locally in VS Code
+* Testing is done using Swagger
+* Only one developer is working with the vector DB
+
+Later this setup can be changed to a shared server.
+
+---
+
+# Architecture
+
+Swagger → FastAPI Ingestion API → ChromaDB Server → Vector Storage
+
+---
+
+# Step 1 — Install ChromaDB
+
+Open terminal and run:
+
+pip install chromadb
+
+---
+
+# Step 2 — Start the Chroma Server
+
+Run:
+
+chroma run --path ./chroma-data
+
+This starts the Chroma server locally.
+
+Default server address:
+
+http://localhost:8000
+
+---
+
+# Step 3 — Verify the Server
+
+Open browser:
+
+http://localhost:8000/api/v2/heartbeat
+
+If you see a response, the server is running.
+
+---
+
+# Step 4 — Create Environment Variables
+
+Create a `.env` file in your project.
+
+CHROMA_HOST=localhost
+CHROMA_PORT=8000
+CHROMA_COLLECTION=getmee_docs_dev
+
+---
+
+# Step 5 — Create Chroma Client Helper
+
+Create file:
+
+chroma_client.py
+
+Example code:
+
+import os
+import chromadb
+
+def get_collection():
+client = chromadb.HttpClient(
+host=os.getenv("CHROMA_HOST", "localhost"),
+port=int(os.getenv("CHROMA_PORT", "8000"))
+)
+
+```
+return client.get_or_create_collection(  
+    name=os.getenv("CHROMA_COLLECTION", "getmee_docs_dev")  
+)
+```
+
+---
+
+# Step 6 — Save Data from Ingestion Pipeline
+
+At the end of the ingestion process:
+
+1. Extract text
+2. Clean text
+3. Chunk document
+4. Generate embeddings
+5. Save into ChromaDB
+
+Example:
+
+from chroma_client import get_collection
+
+collection = get_collection()
+
+collection.upsert(
+ids=["doc1_chunk_1"],
+documents=["This is a text chunk"],
+embeddings=[[0.1, 0.2, 0.3]],
+metadatas=[{
+"document_id": "doc1",
+"file_name": "faq.pdf",
+"chunk_index": 1
+}]
+)
+
+---
+
+# Step 7 — Run FastAPI
+
+uvicorn main:app --reload
+
+Swagger UI will be available at:
+
+http://127.0.0.1:8000/docs
+
+Use Swagger to test document upload and ingestion.
+
+---
+
+# Data Storage
+
+All vector data is stored in:
+
+./chroma-data
+
+---
+
+# When to Use This Option
+
+Use this option when:
+
+* Only one developer is working on ingestion
+* API testing is done locally
+* The RAG backend is not integrated yet

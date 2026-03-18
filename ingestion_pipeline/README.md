@@ -38,3 +38,22 @@
   "chunks": ["chunk1", "chunk2", ...]
 }
 ```
+
+## ChromaDB Management
+
+To delete all records from the ChromaDB collection:
+```
+python delete_chromadb.py
+```
+
+To check the current records in the collection:
+```
+python check_chromadb.py
+```
+
+## Chunking Strategy
+
+Text is now chunked by paragraph (split on double newlines) before storing in ChromaDB. This improves search relevance and retrieval quality.
+
+- Each paragraph is stored as a separate chunk/document.
+- For best results, ensure your input text uses paragraphs separated by blank lines.
