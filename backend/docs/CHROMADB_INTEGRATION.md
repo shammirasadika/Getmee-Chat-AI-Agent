@@ -22,13 +22,15 @@ Keep this terminal open while using the backend or ingestion scripts.
 
 ## 2. Backend Environment Variables
 
-Copy the ChromaDB-related variables from `ingestion_pipeline/.env.example` to your `backend/.env` file. Example:
+Copy the ChromaDB-related variables to your `backend/.env` file. Example:
 
 ```
-CHROMA_DB_IMPL=chromadb.db.impl.sqlite
-CHROMA_DB_PATH=../ingestion_pipeline/chroma-data
-CHROMA_COLLECTION_NAME=your_collection_name
+CHROMA_HOST=localhost
+CHROMA_PORT=8000
+CHROMA_COLLECTION=getmee_docs_dev
 ```
+
+> **Note:** The backend connects to ChromaDB via HTTP (host/port), not by direct file path. Do not use CHROMA_DB_PATH or CHROMA_DB_IMPL in backend .env for server mode.
 
 Adjust the path if your backend runs from a different working directory.
 
@@ -80,7 +82,7 @@ def search(query: str):
 Start your backend server (e.g., with Uvicorn for FastAPI):
 
 ```
-uvicorn main:app --reload
+uvicorn main:app --reload   or python main.py
 ```
 
 ---
@@ -109,94 +111,3 @@ Use curl, Postman, or your frontend to hit the `/search` endpoint and verify res
 - Configure backend environment variables to point to the same ChromaDB instance.
 - Install the chromadb Python package in your backend environment.
 - Connect and query ChromaDB as shown above.
-# ChromaDB Integration Guide
-
-This document explains how to access and use ChromaDB from the backend (FastAPI or any Python backend).
-
----
-
-## 1. Prerequisites
-- Ensure ChromaDB server is running and accessible.
-- Environment variables (`.env`) must be set:
-  - `CHROMA_HOST` (default: localhost)
-  - `CHROMA_PORT` (default: 8000)
-  - `CHROMA_COLLECTION` (default: getmee_docs_dev)
-- The `chroma_client.py` helper is available in the ingestion_pipeline folder.
-
----
-
-## 2. Accessing ChromaDB in Backend Code
-
-Import the helper and get the collection:
-```python
-from chroma_client import get_collection
-
-collection = get_collection()
-```
-
----
-
-## 3. Adding Data
-```python
-collection.add(
-    ids=["unique_id_1"],
-    documents=["This is a paragraph to store."],
-    metadatas=[{"source": "example"}]
-)
-```
-
----
-
-## 4. Querying Data (Semantic Search)
-```python
-results = collection.query(
-    query_texts=["search phrase here"],
-    n_results=5
-)
-print(results)
-```
-
----
-
-## 5. Getting All Data
-```python
-all_data = collection.get()
-print(all_data)
-```
-
----
-
-## 6. Deleting Data
-```python
-ids = collection.get()["ids"]
-if ids:
-    collection.delete(ids=ids)
-```
-
----
-
-## 7. Chunking Strategy
-- Text is chunked by paragraph (split on double newlines) before storing in ChromaDB.
-- Each paragraph is stored as a separate document for better search and retrieval.
-
----
-
-## 8. Management Scripts
-- To delete all records: `python delete_chromadb.py`
-- To check all records: `python check_chromadb.py`
-
----
-
-## 9. Example Integration in FastAPI Endpoint
-```python
-from fastapi import APIRouter
-from chroma_client import get_collection
-
-router = APIRouter()
-
-@router.get("/search")
-def search_endpoint(q: str):
-    collection = get_collection()
-    results = collection.query(query_texts=[q], n_results=5)
-    return results
-```
