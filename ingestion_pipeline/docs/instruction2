@@ -1,0 +1,154 @@
+# ChromaDB Setup (Option 2 — Shared Development Environment)
+
+This guide explains how to run **ChromaDB as a shared server** so multiple developers can use the same vector database.
+
+Recommended when:
+
+* Ingestion pipeline and RAG backend are developed by different developers
+* Team needs shared vector data
+* Integration testing is required
+
+---
+
+# Architecture
+
+Developer A (Ingestion API) → Shared Chroma Server ← Developer B (RAG Backend)
+
+---
+
+# Step 1 — Choose a Host Machine
+
+Run Chroma on one machine such as:
+
+* team laptop
+* development VM
+* cloud server
+
+This machine will host the Chroma server.
+
+---
+
+# Step 2 — Install Chroma
+
+On the host machine:
+
+pip install chromadb
+
+---
+
+# Step 3 — Start Chroma Server
+
+Run:
+
+chroma run --path ./chroma-data
+
+Server address:
+
+http://HOST_IP:8000
+
+Example:
+
+http://192.168.1.20:8000
+
+---
+
+# Step 4 — Verify Server
+
+Open:
+
+http://HOST_IP:8000/api/v2/heartbeat
+
+Example:
+
+http://192.168.1.20:8000/api/v2/heartbeat
+
+---
+
+# Step 5 — Share Connection Details
+
+All developers must use the same configuration.
+
+.env example:
+
+CHROMA_HOST=192.168.1.20
+CHROMA_PORT=8000
+CHROMA_COLLECTION=getmee_docs_dev
+
+---
+
+# Step 6 — Create Chroma Client
+
+Create file:
+
+chroma_client.py
+
+import os
+import chromadb
+
+def get_collection():
+client = chromadb.HttpClient(
+host=os.getenv("CHROMA_HOST"),
+port=int(os.getenv("CHROMA_PORT", "8000"))
+)
+
+```
+return client.get_or_create_collection(  
+    name=os.getenv("CHROMA_COLLECTION", "getmee_docs_dev")  
+)
+```
+
+---
+
+# Step 7 — Ingestion Pipeline Writes Data
+
+Your ingestion pipeline should:
+
+* extract text
+* clean text
+* chunk document
+* generate embeddings
+* save chunks to Chroma
+
+Example:
+
+collection.upsert(
+ids=["doc1_chunk_1"],
+documents=["sample text"],
+embeddings=[[0.1,0.2,0.3]],
+metadatas=[{
+"document_id": "doc1",
+"file_name": "faq.pdf"
+}]
+)
+
+---
+
+# Step 8 — RAG Backend Reads Data
+
+The backend developer connects to the same Chroma server and collection.
+
+Example query:
+
+results = collection.query(
+query_embeddings=[[0.1,0.2,0.3]],
+n_results=3
+)
+
+---
+
+# Recommended Collection Naming
+
+Use consistent names:
+
+getmee_docs_dev
+getmee_docs_test
+getmee_docs_prod
+
+---
+
+# Benefits of Shared Chroma
+
+* Same vector data for all developers
+* Easier integration testing
+* Consistent retrieval results
+* Suitable for RAG + ingestion collaboration
