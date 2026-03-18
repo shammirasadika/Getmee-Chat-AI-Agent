@@ -3,6 +3,9 @@
 *.pyo
 *.pyd
 
+# Ignore binary files
+*.bin
+
 # SQLite database files
 *.sqlite3
 
