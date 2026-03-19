@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "content": "GetMee is a customer service AI assistant platform."
+  },
+  {
+    "id": 2,
+    "content": "RAG stands for Retrieval Augmented Generation."
+  },
+  {
+    "id": 3,
+    "content": "Claude is an LLM developed by Anthropic."
+  }
+]

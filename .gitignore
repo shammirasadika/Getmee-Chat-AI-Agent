@@ -18,6 +18,8 @@ ENV/
 env/
 .venv/
 .env/
+.env
+
 
 # Distribution / packaging
 build/
