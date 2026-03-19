@@ -1,0 +1,11 @@
+
+fastapi
+uvicorn
+pydantic
+python-dotenv
+langdetect
+chromadb
+redis[async]
+psycopg2-binary
+asyncpg
+httpx

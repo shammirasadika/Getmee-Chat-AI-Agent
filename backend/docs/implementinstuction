@@ -1,0 +1,241 @@
+You are helping me build the backend only for the GetMee Chatbot MVP.
+
+Important scope note:
+- Do NOT implement any frontend UI
+- Do NOT create React components
+- Do NOT create chat widget code
+- Do NOT create HTML/CSS frontend files
+- Focus ONLY on backend API, retrieval, session, feedback, and service structure
+
+Project context:
+- Backend must be built with Python FastAPI
+- This chatbot uses RAG
+- We already created the ingestion pipeline locally
+- ChromaDB is already created locally inside the ingestion pipeline project
+- We do NOT use Pinecone
+- The backend must retrieve knowledge from the existing local ChromaDB
+- There is a separate ingestion pipeline service, so this backend only handles chat, session, retrieval, feedback, escalation, and health check
+- Deployment should be Docker-friendly later
+- This is an MVP, so keep the code clean, modular, and easy for a student team to maintain
+
+Main requirement:
+Create a production-friendly FastAPI chatbot backend that supports BOTH English and Spanish.
+
+Language requirement:
+- The backend must support user queries in English and Spanish
+- The knowledge base may contain both English and Spanish content
+- The system should detect the user message language automatically
+- The chatbot should answer in the same language as the user message by default
+- Also allow an optional language parameter in the API request:
+  - "en" for English
+  - "es" for Spanish
+- If the request sends preferred language, use it as first priority
+- If no language is provided, detect it from the user message
+- Retrieval should still work even if stored content includes mixed-language chunks
+- Keep the language handling simple and practical for MVP
+
+What to build:
+Create a FastAPI backend with clean folder structure and clear separation of responsibilities.
+
+Suggested backend modules:
+1. API layer
+   - FastAPI app
+   - chat routes
+   - feedback routes
+   - escalation / handoff routes
+   - health check route
+
+2. Service layer
+   - chat service
+   - language detection service
+   - retrieval service
+   - prompt builder service
+   - session service
+   - feedback service
+
+3. Data / integration layer
+   - ChromaDB client integration
+   - Redis integration
+   - PostgreSQL integration
+   - LLM provider client
+   - config/settings loader
+
+Expected features:
+1. Chat endpoint
+   - Accept user message
+   - Accept session_id
+   - Accept optional language
+   - Detect language if not provided
+   - Retrieve relevant knowledge from local ChromaDB
+   - Build prompt with retrieved context
+   - Generate response from LLM
+   - Return answer in correct language
+   - Save session history
+
+2. Retrieval
+   - Connect to the existing local ChromaDB created by the ingestion pipeline
+   - Read embeddings/documents from Chroma
+   - Search top relevant chunks for the user query
+   - Return retrieved chunks with metadata if available
+   - Make the Chroma path configurable via environment variable
+   - Keep retrieval code reusable so later it can be replaced by another DB if needed
+
+3. Language support
+   - Detect English vs Spanish from input text
+   - Support optional request-selected language
+   - Ensure final answer is generated in the selected/detected language
+   - Add prompt instructions so response language stays consistent
+   - If retrieved chunks contain both languages, still answer in the user's chosen language
+
+4. Session memory
+   - Use Redis for session/context storage if available
+   - If Redis is not available, provide a simple fallback interface or mockable service
+   - Store recent conversation turns for contextual replies
+
+5. Feedback endpoint
+   - Allow feedback such as thumbs up / thumbs down or feedback text
+   - Save feedback in PostgreSQL or structured storage layer
+
+6. Escalation / fallback
+   - If confidence is low or no relevant context is found, return a safe fallback response
+   - Fallback must also respect the selected/detected language
+   - Include option for human escalation flag
+
+7. Health endpoints
+   - /health
+   - /ready
+   - optionally dependency checks for Chroma, Redis, DB
+
+Technical expectations:
+- Use FastAPI
+- Use Pydantic models for request/response schemas
+- Use dependency injection where reasonable
+- Use environment variables for all config
+- Use async-friendly structure where possible
+- Add logging
+- Add error handling
+- Add CORS support only as backend configuration if needed
+- Write code that is readable and beginner-friendly
+- Keep comments practical, not excessive
+
+ChromaDB requirement:
+- Assume ChromaDB is already populated by the ingestion pipeline
+- Backend should not handle ingestion logic
+- Backend only needs to connect to existing Chroma storage and query it
+- Chroma location should come from env variable, for example:
+  CHROMA_PATH=../ingestion/chroma-data
+- Design retrieval service so backend can access Chroma cleanly even if backend and ingestion are separate folders/projects
+
+Suggested folder structure:
+backend/
+  app/
+    main.py
+    api/
+      routes/
+        chat.py
+        feedback.py
+        escalation.py
+        health.py
+    core/
+      config.py
+      logging.py
+    models/
+      chat.py
+      feedback.py
+      common.py
+    services/
+      chat_service.py
+      retrieval_service.py
+      language_service.py
+      prompt_service.py
+      session_service.py
+      feedback_service.py
+    clients/
+      chroma_client.py
+      llm_client.py
+      redis_client.py
+      postgres_client.py
+    utils/
+      exceptions.py
+      helpers.py
+  tests/
+  requirements.txt
+  .env.example
+  Dockerfile
+  README.md
+
+API contract example:
+POST /api/chat
+Request:
+{
+  "message": "Hola, necesito ayuda con la plataforma",
+  "session_id": "abc123",
+  "language": "es"
+}
+
+Response:
+{
+  "answer": "Claro, te ayudo con eso...",
+  "language": "es",
+  "sources": [],
+  "fallback_used": false
+}
+
+Another example:
+POST /api/chat
+Request:
+{
+  "message": "How can I reset my password?",
+  "session_id": "abc123"
+}
+
+Response:
+{
+  "answer": "You can reset your password by ...",
+  "language": "en",
+  "sources": [],
+  "fallback_used": false
+}
+
+Implementation order:
+1. Create request/response schemas
+2. Create config and startup logic
+3. Create ChromaDB client and retrieval service
+4. Create language detection service
+5. Create prompt builder
+6. Create chat orchestration service
+7. Create API routes
+8. Create feedback/session integration
+9. Add tests
+10. Add README and .env.example
+
+Prompt behavior:
+- The assistant must answer only using retrieved context when possible
+- If context is insufficient, answer safely and briefly
+- Do not hallucinate platform-specific facts
+- Always answer in English if language=en
+- Always answer in Spanish if language=es
+- If no explicit language is provided, answer in the detected language of the user's message
+
+Please generate:
+1. Full backend folder structure
+2. Starter FastAPI backend code files
+3. Pydantic models
+4. ChromaDB integration code for local persistent storage
+5. Language detection logic
+6. Chat orchestration logic
+7. Example .env.example
+8. requirements.txt
+9. README with local run instructions
+10. Clean placeholders for Redis, PostgreSQL, and LLM integration
+
+Important:
+- Backend only
+- No frontend UI
+- No widget implementation
+- No React code
+- No Pinecone code
+- Use ChromaDB only
+- Assume ingestion pipeline already exists separately
+- Backend must query the existing ChromaDB knowledge base
+- Keep everything simple, modular, and MVP-friendly
