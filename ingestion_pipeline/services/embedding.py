@@ -1,5 +1,11 @@
-import numpy as np
+from sentence_transformers import SentenceTransformer
+
+# Load the model once at module level for efficiency
+model = SentenceTransformer('all-MiniLM-L6-v2')  # 384-dim
 
 def generate_embedding(text):
-    # Dummy embedding: always return a fixed-length vector of length 6
-    return [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    """
+    Generate a 384-dim embedding for the given text using sentence-transformers.
+    """
+    embedding = model.encode(text)
+    return embedding.tolist()
