@@ -1,0 +1,14 @@
+# Project Instructions
+
+1. The system must support reading and processing various document types, including Excel (.xlsx), CSV (.csv), JSON (.json), text files, and PDF (.pdf) files.
+2. For each supported file type, implement appropriate loading logic using pandas or relevant libraries.
+3. Add a preprocessing step before any downstream processing or embedding. Preprocessing should include:
+   - Handling missing values (e.g., drop or fill NaN)
+   - Removing duplicates
+   - Normalizing or standardizing data as needed
+   - Filtering irrelevant rows/columns
+   - Converting data types if necessary
+   - Cleaning and normalizing text (for text fields)
+4. Ensure that preprocessing is modular and can be easily extended for new file types or additional cleaning steps.
+5. Do not overwrite original data files unless explicitly instructed.
+6. Document all preprocessing steps in the code and update this instruction file if changes are made.

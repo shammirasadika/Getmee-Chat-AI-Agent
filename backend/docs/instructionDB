@@ -1,0 +1,142 @@
+# Backend Configuration – ChromaDB Client
+
+This document explains how the **backend service connects to the Chroma vector database** created by the ingestion pipeline.
+
+The backend reads embeddings stored in ChromaDB and uses them for **Retrieval Augmented Generation (RAG)** when answering user questions.
+
+---
+
+# Project Structure
+
+```text id="q7h9f3"
+project/
+│
+├─ ingestion/
+│   ├─ ingest_api.py
+│   ├─ chroma_client.py
+│   └─ chroma-data/        # Chroma database stored here
+│
+├─ backend/
+│   ├─ rag_api.py
+│   ├─ chroma_client.py
+│   └─ .env
+│
+└─ requirements.txt
+```
+
+The ingestion pipeline stores vector embeddings inside:
+
+```id="ewi6q9"
+ingestion/chroma-data/
+```
+
+The backend connects to the **same database folder** to retrieve document embeddings.
+
+---
+
+# Backend Environment File
+
+Create the following file inside the backend folder.
+
+```id="4h3a6z"
+backend/.env
+```
+
+Example configuration:
+
+```id="i6v7f1"
+CHROMA_DB_PATH=../ingestion/chroma-data
+COLLECTION_NAME=documents
+```
+
+### Environment Variables
+
+| Variable        | Description                                                          |
+| --------------- | -------------------------------------------------------------------- |
+| CHROMA_DB_PATH  | Path to the Chroma vector database created by the ingestion pipeline |
+| COLLECTION_NAME | Name of the collection storing document embeddings                   |
+
+---
+
+# Backend Chroma Client
+
+Create the following file:
+
+```id="9x2e7v"
+backend/chroma_client.py
+```
+
+Example implementation:
+
+```python id="4r0c7y"
+import os
+from pathlib import Path
+import chromadb
+from dotenv import load_dotenv
+
+load_dotenv()
+
+BASE_DIR = Path(__file__).resolve().parent
+
+CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH")
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "documents")
+
+CHROMA_PATH = (BASE_DIR / CHROMA_DB_PATH).resolve()
+
+client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+
+collection = client.get_or_create_collection(name=COLLECTION_NAME)
+
+def query_chroma(query_embedding, top_k=5):
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=top_k
+    )
+    return results
+```
+
+---
+
+# Local Retrieval Testing
+
+When testing the retrieval process locally, make sure that:
+
+1. The **ingestion pipeline has already created the Chroma database**.
+2. The folder **`ingestion/chroma-data/` exists**.
+3. The backend `.env` file correctly points to the database path.
+4. **ChromaDB is in a running/accessible state when performing retrieval queries.**
+
+If the Chroma database is not available or not initialized, the backend will not be able to retrieve embeddings.
+
+---
+
+# Local Development Workflow
+
+1. Run the ingestion pipeline to generate embeddings.
+
+```id="5j6h9k"
+python ingest_api.py
+```
+
+2. Verify the Chroma database folder exists.
+
+```id="0p4e1d"
+ingestion/chroma-data/
+```
+
+3. Start the backend API.
+
+```id="1s8n6c"
+python rag_api.py
+```
+
+4. Run retrieval queries through the backend API.
+
+---
+
+# Summary
+
+* The ingestion pipeline stores embeddings in **ChromaDB**
+* The backend retrieves embeddings for **RAG queries**
+* Both services access the same **Chroma database folder**
+* During local testing, ensure **ChromaDB is available and running**
