@@ -66,6 +66,7 @@ coverage.xml
 backend/.env
 backend/.env.*
 *.secret
+backend/.env.example
 
 # ChromaDB
 chroma-data/
