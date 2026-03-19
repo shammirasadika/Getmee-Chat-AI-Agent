@@ -71,6 +71,7 @@ backend/.env.example
 # ChromaDB
 chroma-data/
 ingestion_pipeline/chroma-data/
+*.sqlite3
 
 # Node
 node_modules/
