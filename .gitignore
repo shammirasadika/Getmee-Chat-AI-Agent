@@ -59,8 +59,25 @@ coverage.xml
 # VS Code settings
 .vscode/
 
+# Ignore secrets and environment files
+.env
+.env.*
+*.env
+backend/.env
+backend/.env.*
+*.secret
+
+# ChromaDB
+chroma-data/
+ingestion_pipeline/chroma-data/
+
+# Node
+node_modules/
+
 # Logs
 *.log
 
-# Local settings
-*.local
+# Misc
+*.bak
+*.swp
+*.tmp
