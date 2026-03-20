@@ -1,3 +1,19 @@
+*.log
+.DS_Store
+
+# Frontend generated/dependency artifacts
 frontend/node_modules/
 frontend/dist/
-*.log
+frontend/.vite/
+frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+
+# Local env files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Editor/OS files
+.vscode/
+Thumbs.db
