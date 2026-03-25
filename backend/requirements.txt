@@ -9,3 +9,4 @@ redis[async]
 psycopg2-binary
 asyncpg
 httpx
+fastapi-mail

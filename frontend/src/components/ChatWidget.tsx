@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { X, Minimize2, Maximize2, Send, Share2 } from "lucide-react";
+import { X, Minimize2, Maximize2, Send, Share2, Mail, Loader2 } from "lucide-react";
 import logo from "@/assets/getmee-logo.svg.png";
+
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8001";
 
 const quickQuestions = [
   "How does AI scoring work?",
@@ -21,29 +23,125 @@ const getTime = () =>
     hour12: true,
   });
 
+const generateSessionId = () =>
+  `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
 const ChatWidget = () => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatStarted, setChatStarted] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [sessionId] = useState(generateSessionId);
+
+  // Email collection state
+  const [showEmailInput, setShowEmailInput] = useState(false);
+  const [emailAddress, setEmailAddress] = useState("");
+  const [lastFallbackMessage, setLastFallbackMessage] = useState("");
+  const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const addBotReply = (userText: string) => {
-    setTimeout(() => {
+  const sendToApi = async (userText: string) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userText,
+          session_id: sessionId,
+        }),
+      });
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const data = await res.json();
+
+      const botMsg: Message = {
+        text: data.answer,
+        isUser: false,
+        time: getTime(),
+      };
+      setMessages((prev) => [...prev, botMsg]);
+
+      // If fallback triggered, show email input
+      if (data.requires_email) {
+        setShowEmailInput(true);
+        setLastFallbackMessage(userText);
+      }
+    } catch (err) {
+      console.error("Chat API error:", err);
       setMessages((prev) => [
         ...prev,
         {
-          text: `I'd be happy to help you with "${userText}"! Could you please tell me specifically what you'd like to know?`,
+          text: "Sorry, something went wrong. Please try again.",
           isUser: false,
           time: getTime(),
         },
       ]);
-    }, 1000);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmitEmail = async () => {
+    if (!emailAddress.trim()) return;
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailAddress)) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: "Please enter a valid email address.",
+          isUser: false,
+          time: getTime(),
+        },
+      ]);
+      return;
+    }
+
+    setIsSubmittingEmail(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/support`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_email: emailAddress,
+          user_message: lastFallbackMessage,
+        }),
+      });
+      if (!res.ok) throw new Error(`Support API error: ${res.status}`);
+      const data = await res.json();
+
+      setShowEmailInput(false);
+      setEmailAddress("");
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: data.message || "Thank you! A team member will contact you soon.",
+          isUser: false,
+          time: getTime(),
+        },
+      ]);
+    } catch (err) {
+      console.error("Support API error:", err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: "Failed to submit your request. Please try again.",
+          isUser: false,
+          time: getTime(),
+        },
+      ]);
+    } finally {
+      setIsSubmittingEmail(false);
+    }
   };
 
   const handleQuickQuestion = (question: string) => {
@@ -55,15 +153,16 @@ const ChatWidget = () => {
     };
     setMessages([botGreeting, userMsg]);
     setChatStarted(true);
-    addBotReply(question);
+    sendToApi(question);
   };
 
   const handleSend = () => {
-    if (!message.trim()) return;
+    if (!message.trim() || isLoading) return;
     const userMsg: Message = { text: message, isUser: true, time: getTime() };
     setMessages((prev) => [...prev, userMsg]);
-    addBotReply(message);
+    const text = message;
     setMessage("");
+    sendToApi(text);
   };
 
   return (
@@ -102,6 +201,8 @@ const ChatWidget = () => {
               onClick={() => {
                 setChatStarted(false);
                 setMessages([]);
+                setShowEmailInput(false);
+                setEmailAddress("");
               }}
               className="p-1.5 text-destructive hover:bg-secondary rounded-md transition-colors"
             >
@@ -205,6 +306,64 @@ const ChatWidget = () => {
                 </div>
               </div>
             ))}
+
+            {/* Loading indicator */}
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="flex items-start gap-2.5 max-w-[80%]">
+                  <img
+                    src={logo}
+                    alt="GetMee"
+                    className="w-9 h-9 rounded-full object-contain shrink-0 mt-0.5"
+                  />
+                  <div className="rounded-2xl px-4 py-3 bg-chat-bubble">
+                    <Loader2 size={18} className="animate-spin text-muted-foreground" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Email input form (shown after fallback) */}
+            {showEmailInput && (
+              <div className="mx-auto w-full max-w-sm bg-secondary rounded-2xl p-4 flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Mail size={16} />
+                  <span>Enter your email to connect with support</span>
+                </div>
+                <input
+                  type="email"
+                  value={emailAddress}
+                  onChange={(e) => setEmailAddress(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSubmitEmail()}
+                  placeholder="your.email@example.com"
+                  className="bg-background rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-ring text-sm"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSubmitEmail}
+                    disabled={isSubmittingEmail}
+                    className="flex-1 bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {isSubmittingEmail ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Send size={16} />
+                    )}
+                    Submit
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowEmailInput(false);
+                      setEmailAddress("");
+                    }}
+                    className="px-4 py-2 text-sm text-muted-foreground hover:bg-background rounded-lg transition-colors"
+                  >
+                    Skip
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -222,11 +381,13 @@ const ChatWidget = () => {
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSend()}
                 placeholder="Type your message..."
-                className="flex-1 bg-secondary rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-ring text-sm"
+                disabled={isLoading}
+                className="flex-1 bg-secondary rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-ring text-sm disabled:opacity-50"
               />
               <button
                 onClick={handleSend}
-                className="p-2 text-primary hover:bg-secondary rounded-md transition-colors shrink-0"
+                disabled={isLoading}
+                className="p-2 text-primary hover:bg-secondary rounded-md transition-colors shrink-0 disabled:opacity-50"
               >
                 <Send size={20} />
               </button>

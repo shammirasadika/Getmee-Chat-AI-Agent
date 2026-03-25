@@ -133,38 +133,20 @@ class ChatService:
             else:
                 print(f"[Chat] No fallback language available", flush=True)
 
-        # 4. If no relevant context in either language — generate helpful general answer
+        # 4. If no relevant context in either language — strict fallback (NO LLM generation)
         if not relevant_chunks:
-            if settings.ALLOW_GENERAL_FALLBACK:
-                print(f"[Chat] Step 4: No relevant chunks — generating general helpful answer in '{lang_name}'", flush=True)
-                from app.core.prompts import GENERAL_FALLBACK_PROMPT
-                general_prompt = GENERAL_FALLBACK_PROMPT.format(
-                    language=lang_name, question=request.message
-                )
-                fallback_answer = await self.llm_client.generate(general_prompt, language=lang_name)
-                fallback_answer = fallback_answer.strip().strip('"').strip()
-                # Validate language
-                if not is_language_clean(fallback_answer, language):
-                    fallback_answer = await self.llm_client.cleanup_language(fallback_answer, lang_name)
-                await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": fallback_answer})
-                return ChatResponse(
-                    answer=fallback_answer,
-                    language=language,
-                    sources=[],
-                    fallback_used=True,
-                    retrieval_language=retrieval_language
-                )
-            else:
-                print(f"[Chat] Step 4: No relevant chunks — returning static fallback message", flush=True)
-                fallback_message = self.language_service.get_fallback_message(language)
-                await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": fallback_message})
-                return ChatResponse(
-                    answer=fallback_message,
-                    language=language,
-                    sources=[],
-                    fallback_used=True,
-                    retrieval_language=retrieval_language
-                )
+            print(f"[Chat] Step 4: No relevant chunks — returning strict fallback message (LLM skipped)", flush=True)
+            fallback_message = self.language_service.get_fallback_message(language)
+            await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": fallback_message})
+
+            return ChatResponse(
+                answer=fallback_message,
+                language=language,
+                sources=[],
+                fallback_used=True,
+                requires_email=True,
+                retrieval_language=retrieval_language
+            )
 
         sources = [{"text": doc[:200]} for doc in relevant_chunks]
 

@@ -11,4 +11,5 @@ class ChatResponse(BaseModel):
     language: str
     sources: List[dict] = []
     fallback_used: bool = False
+    requires_email: bool = False
     retrieval_language: Optional[str] = None
