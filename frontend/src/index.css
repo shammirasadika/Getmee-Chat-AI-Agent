@@ -99,11 +99,18 @@ All colors MUST be HSL.
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
   * {
     @apply border-border;
   }
 
   body {
+    margin: 0;
     @apply bg-background text-foreground;
   }
 }
