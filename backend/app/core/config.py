@@ -19,7 +19,9 @@ class Settings:
     LLM_PROVIDER: str = get_config("LLM_PROVIDER", "groq")
     LLM_API_KEY: str = get_config("LLM_API_KEY", get_config("GROQ_API_KEY", ""))
     LOG_LEVEL: str = get_config("LOG_LEVEL", "INFO")
-    ALLOW_GENERAL_FALLBACK: bool = get_config("ALLOW_GENERAL_FALLBACK", "true").lower() == "true"
+    ALLOW_GENERAL_FALLBACK: bool = get_config("ALLOW_GENERAL_FALLBACK", "false").lower() == "true"
+    SUPPORT_EMAIL: str = get_config("SUPPORT_EMAIL", "")
+    SUPPORT_EMAIL_COOLDOWN: int = int(get_config("SUPPORT_EMAIL_COOLDOWN", "300"))
 
 settings = Settings()
 

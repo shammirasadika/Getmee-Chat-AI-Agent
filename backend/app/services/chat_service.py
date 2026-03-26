@@ -3,9 +3,11 @@ from app.services.retrieval_service import RetrievalService
 from app.services.prompt_service import PromptService
 from app.clients.llm_client import LLMClient
 from app.services.session_service import SessionService
+from app.services.message_service import MessageService
 from app.core.config import settings
 from app.models.chat import ChatRequest, ChatResponse
 from app.utils.helpers import clean_context_chunk, is_meaningful_chunk, filter_relevant_chunks, is_language_clean, MIN_PRIMARY_CONFIDENCE
+import uuid
 
 class ChatService:
     def __init__(self):
@@ -14,6 +16,7 @@ class ChatService:
         self.prompt_service = PromptService()
         self.llm_client = LLMClient(settings.LLM_PROVIDER, settings.LLM_API_KEY)
         self.session_service = SessionService()
+        self.message_service = MessageService()
 
     def _extract_meaningful_chunks(self, retrieved: dict, query: str, label: str, is_cross_language: bool = False) -> tuple:
         """Extract, clean, validate, and relevance-filter chunks from retrieval results.
@@ -67,6 +70,11 @@ class ChatService:
         return retrieved, relevant, best_distance, max_overlap
 
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
+        # 0. Ensure session exists in PG + Redis
+        session_key = request.session_id  # frontend sends this as session_key
+        session = await self.session_service.get_or_create_session(session_key, request.language)
+        session_uuid = session["id"]  # PG UUID
+
         # 1. Determine user language
         language = request.language or self.language_service.detect_language(request.message)
         lang_name = self.language_service.get_language_name(language)
@@ -74,6 +82,12 @@ class ChatService:
         fallback_used = False
 
         print(f"[Chat] User language: {language} ({lang_name}) | Query: '{request.message[:80]}'", flush=True)
+
+        # Save user message to PG + Redis
+        user_msg = await self.message_service.save_user_message(
+            session_id=session_uuid, session_key=session_key,
+            text=request.message, language=language,
+        )
 
         # 2. Primary retrieval
         print(f"[Chat] Step 2: Primary retrieval in '{language}'...", flush=True)
@@ -133,38 +147,31 @@ class ChatService:
             else:
                 print(f"[Chat] No fallback language available", flush=True)
 
-        # 4. If no relevant context in either language — generate helpful general answer
+        # 4. If no relevant context in either language — strict fallback (NO LLM generation)
         if not relevant_chunks:
-            if settings.ALLOW_GENERAL_FALLBACK:
-                print(f"[Chat] Step 4: No relevant chunks — generating general helpful answer in '{lang_name}'", flush=True)
-                from app.core.prompts import GENERAL_FALLBACK_PROMPT
-                general_prompt = GENERAL_FALLBACK_PROMPT.format(
-                    language=lang_name, question=request.message
-                )
-                fallback_answer = await self.llm_client.generate(general_prompt, language=lang_name)
-                fallback_answer = fallback_answer.strip().strip('"').strip()
-                # Validate language
-                if not is_language_clean(fallback_answer, language):
-                    fallback_answer = await self.llm_client.cleanup_language(fallback_answer, lang_name)
-                await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": fallback_answer})
-                return ChatResponse(
-                    answer=fallback_answer,
-                    language=language,
-                    sources=[],
-                    fallback_used=True,
-                    retrieval_language=retrieval_language
-                )
-            else:
-                print(f"[Chat] Step 4: No relevant chunks — returning static fallback message", flush=True)
-                fallback_message = self.language_service.get_fallback_message(language)
-                await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": fallback_message})
-                return ChatResponse(
-                    answer=fallback_message,
-                    language=language,
-                    sources=[],
-                    fallback_used=True,
-                    retrieval_language=retrieval_language
-                )
+            print(f"[Chat] Step 4: No relevant chunks — returning strict fallback message (LLM skipped)", flush=True)
+            fallback_message = self.language_service.get_fallback_message(language)
+
+            # Save bot fallback message to PG + Redis (sets feedback_state)
+            bot_msg = await self.message_service.save_bot_message(
+                session_id=session_uuid, session_key=session_key,
+                text=fallback_message, language=language,
+                fallback_used=True, source_type="fallback",
+            )
+            # Legacy turn save
+            await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": fallback_message})
+
+            return ChatResponse(
+                answer=fallback_message,
+                language=language,
+                sources=[],
+                fallback_used=True,
+                requires_email=True,
+                retrieval_language=retrieval_language,
+                message_id=str(bot_msg["id"]),
+                session_uuid=str(session_uuid),
+                show_feedback=True,
+            )
 
         sources = [{"text": doc[:200]} for doc in relevant_chunks]
 
@@ -180,7 +187,13 @@ class ChatService:
             print(f"[Chat] Step 7: Language validation FAILED for '{language}' — rewriting...", flush=True)
             answer = await self.llm_client.cleanup_language(answer, lang_name)
 
-        # 8. Save session turn
+        # 8. Save bot message to PG + Redis (sets feedback_state)
+        bot_msg = await self.message_service.save_bot_message(
+            session_id=session_uuid, session_key=session_key,
+            text=answer, language=language,
+            fallback_used=fallback_used, source_type="kb",
+        )
+        # Legacy turn save
         await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": answer})
 
         print(f"[Chat] DONE — fallback_used={fallback_used}, retrieval_language={retrieval_language}", flush=True)
@@ -189,7 +202,10 @@ class ChatService:
             language=language,
             sources=sources,
             fallback_used=fallback_used,
-            retrieval_language=retrieval_language
+            retrieval_language=retrieval_language,
+            message_id=str(bot_msg["id"]),
+            session_uuid=str(session_uuid),
+            show_feedback=True,
         )
 
     async def handle_escalation(self, request):

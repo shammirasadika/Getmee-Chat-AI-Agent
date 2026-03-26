@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import chat, feedback, escalation, health
+from app.api.routes import chat, feedback, escalation, health, support
 
 app = FastAPI(
     title="GetMee Chatbot Backend",
@@ -23,14 +23,25 @@ app.add_middleware(
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(feedback.router, prefix="/api/feedback", tags=["feedback"])
 app.include_router(escalation.router, prefix="/api/escalation", tags=["escalation"])
+app.include_router(support.router, prefix="/api/support", tags=["support"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 
 
 @app.on_event("startup")
-async def print_swagger_url():
+async def startup_event():
     import os
     port = os.getenv("PORT", "8001")
     print(f"\nSwagger docs available at: http://localhost:{port}/docs\n")
+
+    # Ensure PostgreSQL tables exist
+    from app.core.config import settings
+    from app.clients.postgres_client import PostgresClient
+    try:
+        pg = PostgresClient(settings.POSTGRES_URL)
+        await pg.ensure_tables()
+        print("[Startup] PostgreSQL tables ensured", flush=True)
+    except Exception as e:
+        print(f"[Startup] PostgreSQL table setup failed (non-blocking): {e}", flush=True)
 
 @app.get("/")
 def root():

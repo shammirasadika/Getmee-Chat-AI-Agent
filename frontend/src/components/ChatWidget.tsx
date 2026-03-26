@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { Send, Mail, Loader2, Globe, RotateCcw, MessageCircle, Sparkles, SmilePlus, Frown } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import {
   X,
   Send,
@@ -127,6 +129,18 @@ const getTime = () =>
     minute: "2-digit",
     hour12: true,
   });
+
+const generateSessionId = () =>
+  `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+/* ---- Typing dots animation ---- */
+const TypingIndicator = () => (
+  <div className="flex items-center gap-1 px-1 py-0.5">
+    <span className="w-2 h-2 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
+    <span className="w-2 h-2 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
+    <span className="w-2 h-2 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
+  </div>
+);
 
 const ChatWidget = () => {
   const [language, setLanguage] = useState<Language>("en");

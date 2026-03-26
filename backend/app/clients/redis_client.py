@@ -45,3 +45,16 @@ class RedisClient:
             return [ast.literal_eval(t) for t in turns]
         else:
             return self.memory.get(session_id, [])
+
+    async def is_cooldown_active(self, key: str) -> bool:
+        """Check if a cooldown key exists in Redis."""
+        if self.client:
+            return await self.client.exists(key) > 0
+        return key in self.memory
+
+    async def set_cooldown(self, key: str, ttl_seconds: int = 300):
+        """Set a cooldown key with TTL in Redis."""
+        if self.client:
+            await self.client.set(key, "1", ex=ttl_seconds)
+        else:
+            self.memory[key] = True
