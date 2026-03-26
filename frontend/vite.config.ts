@@ -17,4 +17,29 @@ export default defineConfig(() => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        widget: path.resolve(__dirname, "widget/widget.ts"),
+      },
+      output: [
+        {
+          // Main app bundle
+          entryFileNames: "[name].js",
+          chunkFileNames: "chunks/[name]-[hash].js",
+          assetFileNames: "assets/[name]-[hash][extname]",
+          dir: "dist/app",
+        },
+        {
+          // Widget bundle (separate)
+          entryFileNames: "[name].js",
+          chunkFileNames: "chunks/[name]-[hash].js",
+          assetFileNames: "assets/[name]-[hash][extname]",
+          dir: "dist/widget",
+        },
+      ],
+    },
+    minify: "terser",
+  },
 }));
