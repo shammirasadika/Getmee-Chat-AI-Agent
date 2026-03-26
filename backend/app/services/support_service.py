@@ -10,7 +10,13 @@ class SupportService:
     def __init__(self):
         self.postgres = PostgresClient(settings.POSTGRES_URL)
         self.redis = RedisClient(settings.REDIS_URL)
-        self.email_client = EmailClient()
+        self._email_client = None
+
+    @property
+    def email_client(self):
+        if self._email_client is None:
+            self._email_client = EmailClient()
+        return self._email_client
 
     async def handle_fallback_escalation(
         self,

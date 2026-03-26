@@ -13,3 +13,7 @@ class ChatResponse(BaseModel):
     fallback_used: bool = False
     requires_email: bool = False
     retrieval_language: Optional[str] = None
+    message_id: Optional[str] = None
+    session_uuid: Optional[str] = None       # PG chat_sessions.id (UUID)
+    show_feedback: bool = True                # whether to show Satisfied/Not Satisfied
+    show_support_options: bool = False        # whether to show Try Again / Contact Support

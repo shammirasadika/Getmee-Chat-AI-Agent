@@ -1,19 +1,83 @@
 import { useState, useRef, useEffect } from "react";
-import { X, Minimize2, Maximize2, Send, Share2, Mail, Loader2 } from "lucide-react";
+import { Send, Mail, Loader2, Globe, RotateCcw, MessageCircle, Sparkles, SmilePlus, Frown } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import logo from "@/assets/getmee-logo.svg.png";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8001";
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
-const quickQuestions = [
-  "How does AI scoring work?",
-  "Interview preparation tips",
-  "How do i improve my answers?",
-];
+type Language = "en" | "es";
+
+const translations = {
+  en: {
+    title: "GetMee AI Assistant",
+    online: "Online",
+    greeting: "Hello 👋",
+    subtitle: "I'm the GetMee AI Assistant. How can I help you today?",
+    askAbout: "I can help you with:",
+    topics: [
+      "Login & account access",
+      "Platform features & setup",
+      "User & group management",
+    ],
+    quickQuestionLabel: "Try asking:",
+    quickQuestions: [
+      "I can't log into my account",
+      "How does white-label onboarding work?",
+      "I didn't receive my login email",
+      "The app keeps crashing",
+      "The video is not loading",
+    ],
+    botGreeting: "Hello! I'm GetMee AI Assistant. How can I help you today?",
+    placeholder: "Type your message...",
+    newChat: "New Chat",
+    emailPrompt: "Please share your email so our support team can assist you",
+    emailPlaceholder: "your.email@example.com",
+    submit: "Submit",
+    skip: "Skip",
+    invalidEmail: "Please enter a valid email address.",
+    errorMsg: "Sorry, something went wrong. Please try again.",
+    emailSuccess: "Thank you! A team member will contact you soon.",
+    emailError: "Failed to submit your request. Please try again.",
+  },
+  es: {
+    title: "Asistente IA GetMee",
+    online: "En línea",
+    greeting: "Hola 👋",
+    subtitle: "Soy el Asistente IA de GetMee. ¿En qué puedo ayudarte hoy?",
+    askAbout: "Puedo ayudarte con:",
+    topics: [
+      "Inicio de sesión y acceso",
+      "Funciones y configuración de la plataforma",
+      "Gestión de usuarios y grupos",
+    ],
+    quickQuestionLabel: "Intenta preguntar:",
+    quickQuestions: [
+      "No puedo iniciar sesión en mi cuenta",
+      "¿Cómo funciona la incorporación de marca blanca?",
+      "No recibí mi correo de inicio de sesión",
+      "La aplicación se sigue cerrando",
+      "El video no se carga",
+    ],
+    botGreeting:
+      "¡Hola! Soy el Asistente IA de GetMee. ¿En qué puedo ayudarte hoy?",
+    placeholder: "Escribe tu mensaje...",
+    newChat: "Nuevo Chat",
+    emailPrompt: "Comparte tu correo para que nuestro equipo pueda ayudarte",
+    emailPlaceholder: "tu.correo@ejemplo.com",
+    submit: "Enviar",
+    skip: "Omitir",
+    invalidEmail: "Por favor ingresa un correo electrónico válido.",
+    errorMsg: "Lo sentimos, algo salió mal. Inténtalo de nuevo.",
+    emailSuccess: "¡Gracias! Un miembro del equipo te contactará pronto.",
+    emailError: "No se pudo enviar tu solicitud. Inténtalo de nuevo.",
+  },
+};
 
 type Message = {
   text: string;
   isUser: boolean;
   time: string;
+  messageId?: string;
 };
 
 const getTime = () =>
@@ -26,27 +90,41 @@ const getTime = () =>
 const generateSessionId = () =>
   `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
+/* ---- Typing dots animation ---- */
+const TypingIndicator = () => (
+  <div className="flex items-center gap-1 px-1 py-0.5">
+    <span className="w-2 h-2 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
+    <span className="w-2 h-2 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
+    <span className="w-2 h-2 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
+  </div>
+);
+
 const ChatWidget = () => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [lang, setLang] = useState<Language>("en");
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatStarted, setChatStarted] = useState(false);
-  const [isFullScreen, setIsFullScreen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(generateSessionId);
 
-  // Email collection state
+  // Email collection state (driven by backend requires_email flag)
   const [showEmailInput, setShowEmailInput] = useState(false);
   const [emailAddress, setEmailAddress] = useState("");
   const [lastFallbackMessage, setLastFallbackMessage] = useState("");
   const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
 
+  // Feedback state: messageId -> "positive" | "negative" | "sending"
+  const [feedbackMap, setFeedbackMap] = useState<Record<string, string>>({});
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const i = translations[lang];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isLoading]);
 
+  /* ---- API: Send chat message ---- */
   const sendToApi = async (userText: string) => {
     setIsLoading(true);
     try {
@@ -56,20 +134,21 @@ const ChatWidget = () => {
         body: JSON.stringify({
           message: userText,
           session_id: sessionId,
+          language: lang,
         }),
       });
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       const data = await res.json();
 
-      const botMsg: Message = {
-        text: data.answer,
-        isUser: false,
-        time: getTime(),
-      };
-      setMessages((prev) => [...prev, botMsg]);
+      setMessages((prev) => [
+        ...prev,
+        { text: data.answer, isUser: false, time: getTime(), messageId: data.message_id },
+      ]);
 
-      // If fallback triggered, show email input
-      if (data.requires_email) {
+      // Show email collection if backend signals fallback OR if the
+      // LLM answer indicates it couldn't find relevant information
+      const noInfoPattern = /couldn'?t find information|no information available|unable to find|don't have information|no puedo encontrar información|no tengo información/i;
+      if (data.requires_email || noInfoPattern.test(data.answer)) {
         setShowEmailInput(true);
         setLastFallbackMessage(userText);
       }
@@ -77,30 +156,22 @@ const ChatWidget = () => {
       console.error("Chat API error:", err);
       setMessages((prev) => [
         ...prev,
-        {
-          text: "Sorry, something went wrong. Please try again.",
-          isUser: false,
-          time: getTime(),
-        },
+        { text: i.errorMsg, isUser: false, time: getTime() },
       ]);
     } finally {
       setIsLoading(false);
     }
   };
 
+  /* ---- API: Submit email for support escalation ---- */
   const handleSubmitEmail = async () => {
     if (!emailAddress.trim()) return;
 
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(emailAddress)) {
       setMessages((prev) => [
         ...prev,
-        {
-          text: "Please enter a valid email address.",
-          isUser: false,
-          time: getTime(),
-        },
+        { text: i.invalidEmail, isUser: false, time: getTime() },
       ]);
       return;
     }
@@ -114,6 +185,7 @@ const ChatWidget = () => {
           session_id: sessionId,
           user_email: emailAddress,
           user_message: lastFallbackMessage,
+          language: lang,
         }),
       });
       if (!res.ok) throw new Error(`Support API error: ${res.status}`);
@@ -124,7 +196,7 @@ const ChatWidget = () => {
       setMessages((prev) => [
         ...prev,
         {
-          text: data.message || "Thank you! A team member will contact you soon.",
+          text: data.message || i.emailSuccess,
           isUser: false,
           time: getTime(),
         },
@@ -133,11 +205,7 @@ const ChatWidget = () => {
       console.error("Support API error:", err);
       setMessages((prev) => [
         ...prev,
-        {
-          text: "Failed to submit your request. Please try again.",
-          isUser: false,
-          time: getTime(),
-        },
+        { text: i.emailError, isUser: false, time: getTime() },
       ]);
     } finally {
       setIsSubmittingEmail(false);
@@ -145,255 +213,348 @@ const ChatWidget = () => {
   };
 
   const handleQuickQuestion = (question: string) => {
-    const userMsg: Message = { text: question, isUser: true, time: getTime() };
-    const botGreeting: Message = {
-      text: "Hello! I'm GetMee AI Assistant. How can I help you today?",
-      isUser: false,
-      time: getTime(),
-    };
-    setMessages([botGreeting, userMsg]);
+    setMessages([
+      { text: i.botGreeting, isUser: false, time: getTime() },
+      { text: question, isUser: true, time: getTime() },
+    ]);
     setChatStarted(true);
     sendToApi(question);
   };
 
   const handleSend = () => {
     if (!message.trim() || isLoading) return;
-    const userMsg: Message = { text: message, isUser: true, time: getTime() };
-    setMessages((prev) => [...prev, userMsg]);
     const text = message;
+    if (!chatStarted) {
+      setMessages([
+        { text: i.botGreeting, isUser: false, time: getTime() },
+        { text, isUser: true, time: getTime() },
+      ]);
+      setChatStarted(true);
+    } else {
+      setMessages((prev) => [
+        ...prev,
+        { text, isUser: true, time: getTime() },
+      ]);
+    }
     setMessage("");
     sendToApi(text);
+    inputRef.current?.focus();
+  };
+
+  const resetChat = () => {
+    setChatStarted(false);
+    setMessages([]);
+    setShowEmailInput(false);
+    setEmailAddress("");
+    setFeedbackMap({});
+  };
+
+  /* ---- API: Submit feedback ---- */
+  const handleFeedback = async (messageId: string, feedback: "positive" | "negative") => {
+    if (feedbackMap[messageId]) return; // already submitted
+    setFeedbackMap((prev) => ({ ...prev, [messageId]: "sending" }));
+    try {
+      // Map frontend feedback to backend expected values
+      const backendFeedback = feedback === "positive" ? "satisfied" : "not_satisfied";
+      const res = await fetch(`${API_BASE}/api/feedback/message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_key: sessionId, // backend expects session_key
+          message_id: messageId,
+          feedback: backendFeedback,
+        }),
+      });
+      if (!res.ok) throw new Error(`Feedback API error: ${res.status}`);
+      setFeedbackMap((prev) => ({ ...prev, [messageId]: feedback }));
+    } catch (err) {
+      console.error("Feedback error:", err);
+      setFeedbackMap((prev) => {
+        const updated = { ...prev };
+        delete updated[messageId];
+        return updated;
+      });
+    }
   };
 
   return (
-    <div
-      className={`flex items-center justify-center min-h-screen bg-muted ${isFullScreen ? "p-0" : "p-4"}`}
-    >
-      <div
-        className={`bg-background flex flex-col overflow-hidden transition-all duration-300 ${
-          isFullScreen
-            ? "w-full h-screen max-h-screen rounded-none border-0"
-            : "w-full max-w-lg rounded-2xl shadow-xl border border-border h-[85vh] max-h-[700px]"
-        }`}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 shrink-0">
-          <div className="flex items-center gap-3">
-            <img src={logo} alt="GetMee" className="w-12 h-12 object-contain" />
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">
-                GetMee AI Assistant
-              </h2>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-online" />
-                <span className="text-sm text-muted-foreground">Online</span>
-              </div>
-            </div>
+    <div className="flex flex-col w-full h-screen bg-background text-foreground">
+      {/* ──── Header ──── */}
+      <header className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-primary/5 to-primary/10 border-b border-border shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center overflow-hidden">
+            <img src={logo} alt="GetMee" className="w-9 h-9 object-contain" />
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsFullScreen(!isFullScreen)}
-              className="p-1.5 text-primary hover:bg-secondary rounded-md transition-colors"
-            >
-              {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-            </button>
-            <button
-              onClick={() => {
-                setChatStarted(false);
-                setMessages([]);
-                setShowEmailInput(false);
-                setEmailAddress("");
-              }}
-              className="p-1.5 text-destructive hover:bg-secondary rounded-md transition-colors"
-            >
-              <X size={18} />
-            </button>
+          <div>
+            <h2 className="text-base font-bold text-foreground leading-tight tracking-tight">
+              {i.title}
+            </h2>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="w-2 h-2 rounded-full bg-online animate-pulse" />
+              <span className="text-xs text-muted-foreground font-medium">
+                {i.online}
+              </span>
+            </div>
           </div>
         </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => setLang(lang === "en" ? "es" : "en")}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-background border border-border text-primary hover:bg-primary hover:text-primary-foreground transition-all shadow-sm"
+            title={lang === "en" ? "Cambiar a Español" : "Switch to English"}
+          >
+            <Globe size={13} />
+            {lang === "en" ? "ES" : "EN"}
+          </button>
+          {chatStarted && (
+            <button
+              onClick={resetChat}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full bg-background border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-all shadow-sm"
+              title={i.newChat}
+            >
+              <RotateCcw size={12} />
+              {i.newChat}
+            </button>
+          )}
+        </div>
+      </header>
 
-        <div className="h-px bg-border mx-4 shrink-0" />
-
-        {isExpanded && !chatStarted && (
-          <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col items-center gap-6">
-            {/* Greeting */}
-            <div className="text-center">
-              <h3 className="text-2xl font-semibold text-foreground">
-                Hello 👋
-              </h3>
-              <p className="text-muted-foreground mt-1">
-                I'm the GetMee AI Assistant
-              </p>
+      {/* ──── Welcome screen ──── */}
+      {!chatStarted && (
+        <div className="flex-1 overflow-y-auto px-5 py-8 flex flex-col items-center gap-6">
+          {/* Greeting */}
+          <div className="text-center space-y-2">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
+              <MessageCircle size={28} className="text-primary" />
             </div>
+            <h3 className="text-2xl font-bold text-foreground tracking-tight">
+              {i.greeting}
+            </h3>
+            <p className="text-muted-foreground text-sm max-w-xs mx-auto leading-relaxed">
+              {i.subtitle}
+            </p>
+          </div>
 
-            {/* Info Card */}
-            <div className="w-full bg-chat-bubble rounded-2xl p-6">
-              <h4 className="text-lg font-semibold text-chat-bubble-foreground mb-3">
-                Ask me anything about:
-              </h4>
-              <ul className="space-y-2">
-                {[
-                  "Interview preparation",
-                  "Resume tips",
-                  "Using the GetMee platform",
-                ].map((item) => (
-                  <li
-                    key={item}
-                    className="flex items-center gap-2 text-chat-bubble-foreground"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {/* Topics */}
+          <div className="w-full max-w-md bg-gradient-to-br from-chat-bubble to-chat-bubble/60 rounded-2xl p-5 shadow-sm border border-border/50">
+            <h4 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+              <Sparkles size={14} className="text-primary" />
+              {i.askAbout}
+            </h4>
+            <ul className="space-y-2">
+              {i.topics.map((item) => (
+                <li
+                  key={item}
+                  className="flex items-center gap-2.5 text-sm text-foreground/80"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
 
-            {/* Quick Questions */}
-            <div className="w-full">
-              <h4 className="text-center font-semibold text-foreground mb-4">
-                Quick Question:
-              </h4>
-              <div className="flex flex-col gap-3">
-                {quickQuestions.map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => handleQuickQuestion(q)}
-                    className="w-full text-left px-4 py-3 border border-border rounded-lg text-foreground hover:bg-secondary transition-colors"
-                  >
+          {/* Quick questions */}
+          <div className="w-full max-w-md">
+            <h4 className="text-sm font-bold text-foreground mb-3 text-center">
+              {i.quickQuestionLabel}
+            </h4>
+            <div className="flex flex-col gap-2">
+              {i.quickQuestions.map((q) => (
+                <button
+                  key={q}
+                  onClick={() => handleQuickQuestion(q)}
+                  className="group w-full text-left px-4 py-3 bg-background border border-border rounded-xl text-sm text-foreground hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm transition-all"
+                >
+                  <span className="group-hover:text-primary transition-colors">
                     {q}
-                  </button>
-                ))}
-              </div>
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Chat conversation view */}
-        {isExpanded && chatStarted && (
-          <div className="flex-1 overflow-y-auto px-5 py-6 flex flex-col gap-6">
-            {messages.map((msg, i) => (
+      {/* ──── Chat messages ──── */}
+      {chatStarted && (
+        <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-5 flex flex-col gap-5">
+          {messages.map((msg, idx) => (
+            <div
+              key={idx}
+              className={`flex ${msg.isUser ? "justify-end" : "justify-start"} animate-in fade-in slide-in-from-bottom-2 duration-200`}
+            >
               <div
-                key={i}
-                className={`flex ${msg.isUser ? "justify-end" : "justify-start"}`}
+                className={`flex flex-col ${msg.isUser ? "items-end" : "items-start"} max-w-[85%] sm:max-w-[75%]`}
               >
                 <div
-                  className={`flex flex-col ${msg.isUser ? "items-end" : "items-start"} max-w-[80%]`}
+                  className={`flex items-end gap-2.5 ${msg.isUser ? "flex-row-reverse" : ""}`}
                 >
-                  <div
-                    className={`flex items-start gap-2.5 ${msg.isUser ? "flex-row-reverse" : ""}`}
-                  >
-                    {!msg.isUser && (
+                  {!msg.isUser && (
+                    <div className="w-8 h-8 rounded-full bg-white shadow-sm flex items-center justify-center shrink-0 border border-border/50">
                       <img
                         src={logo}
                         alt="GetMee"
-                        className="w-9 h-9 rounded-full object-contain shrink-0 mt-0.5"
+                        className="w-6 h-6 object-contain"
                       />
-                    )}
-                    <div
-                      className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                        msg.isUser
-                          ? "bg-chat-bubble text-chat-bubble-foreground"
-                          : "bg-chat-bubble text-chat-bubble-foreground"
-                      }`}
-                    >
-                      {msg.text}
                     </div>
-                  </div>
-                  <span
-                    className={`text-xs text-muted-foreground mt-1.5 ${msg.isUser ? "mr-1" : "ml-12"}`}
+                  )}
+                  <div
+                    className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                      msg.isUser
+                        ? "bg-primary text-primary-foreground rounded-br-md shadow-sm whitespace-pre-wrap"
+                        : "bg-chat-bubble text-foreground rounded-bl-md shadow-sm border border-border/30 prose prose-sm prose-neutral max-w-none [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5 [&_h1]:text-base [&_h2]:text-sm [&_h3]:text-sm [&_strong]:text-foreground [&_a]:text-primary"
+                    }`}
                   >
-                    {msg.time}
-                  </span>
+                    {msg.isUser ? (
+                      msg.text
+                    ) : (
+                      <ReactMarkdown>{msg.text}</ReactMarkdown>
+                    )}
+                  </div>
                 </div>
+                <span
+                  className={`text-[10px] text-muted-foreground/70 mt-1.5 ${msg.isUser ? "mr-1" : "ml-10"}`}
+                >
+                  {msg.time}
+                </span>
+                {/* Feedback buttons for bot messages */}
+                {!msg.isUser && msg.messageId && (
+                  <div className="flex items-center gap-2.5 ml-10 mt-2">
+                    {feedbackMap[msg.messageId] === "sending" ? (
+                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50 border border-border/40">
+                        <Loader2 size={14} className="animate-spin text-primary" />
+                        <span className="text-xs text-muted-foreground">Submitting...</span>
+                      </div>
+                    ) : feedbackMap[msg.messageId] ? (
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${
+                        feedbackMap[msg.messageId] === "positive"
+                          ? "bg-primary/5 border-primary/20"
+                          : "bg-destructive/5 border-destructive/20"
+                      }`}>
+                        {feedbackMap[msg.messageId] === "positive" ? (
+                          <SmilePlus size={15} className="text-primary" />
+                        ) : (
+                          <Frown size={15} className="text-destructive" />
+                        )}
+                        <span className={`text-xs font-semibold ${
+                          feedbackMap[msg.messageId] === "positive" ? "text-primary" : "text-destructive"
+                        }`}>
+                          {feedbackMap[msg.messageId] === "positive" ? "Satisfied" : "Not Satisfied"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">— Thank you!</span>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="text-[11px] text-muted-foreground/60 mr-0.5">Was this helpful?</span>
+                        <button
+                          onClick={() => handleFeedback(msg.messageId!, "positive")}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary/5 text-primary border border-primary/20 hover:bg-primary/15 hover:border-primary/40 hover:shadow-sm active:scale-95 transition-all"
+                        >
+                          <SmilePlus size={15} />
+                          Satisfied
+                        </button>
+                        <button
+                          onClick={() => handleFeedback(msg.messageId!, "negative")}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive/5 text-destructive border border-destructive/20 hover:bg-destructive/15 hover:border-destructive/40 hover:shadow-sm active:scale-95 transition-all"
+                        >
+                          <Frown size={15} />
+                          Not Satisfied
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
+            </div>
+          ))}
 
-            {/* Loading indicator */}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="flex items-start gap-2.5 max-w-[80%]">
+          {/* Typing indicator */}
+          {isLoading && (
+            <div className="flex justify-start animate-in fade-in duration-200">
+              <div className="flex items-end gap-2.5 max-w-[80%]">
+                <div className="w-8 h-8 rounded-full bg-white shadow-sm flex items-center justify-center shrink-0 border border-border/50">
                   <img
                     src={logo}
                     alt="GetMee"
-                    className="w-9 h-9 rounded-full object-contain shrink-0 mt-0.5"
+                    className="w-6 h-6 object-contain"
                   />
-                  <div className="rounded-2xl px-4 py-3 bg-chat-bubble">
-                    <Loader2 size={18} className="animate-spin text-muted-foreground" />
-                  </div>
+                </div>
+                <div className="rounded-2xl rounded-bl-md px-4 py-3 bg-chat-bubble shadow-sm border border-border/30">
+                  <TypingIndicator />
                 </div>
               </div>
-            )}
-
-            {/* Email input form (shown after fallback) */}
-            {showEmailInput && (
-              <div className="mx-auto w-full max-w-sm bg-secondary rounded-2xl p-4 flex flex-col gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Mail size={16} />
-                  <span>Enter your email to connect with support</span>
-                </div>
-                <input
-                  type="email"
-                  value={emailAddress}
-                  onChange={(e) => setEmailAddress(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSubmitEmail()}
-                  placeholder="your.email@example.com"
-                  className="bg-background rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-ring text-sm"
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSubmitEmail}
-                    disabled={isSubmittingEmail}
-                    className="flex-1 bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {isSubmittingEmail ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <Send size={16} />
-                    )}
-                    Submit
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowEmailInput(false);
-                      setEmailAddress("");
-                    }}
-                    className="px-4 py-2 text-sm text-muted-foreground hover:bg-background rounded-lg transition-colors"
-                  >
-                    Skip
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-
-        {/* Input bar */}
-        {isExpanded && chatStarted && (
-          <>
-            <div className="h-px bg-border mx-4 shrink-0" />
-            <div className="px-4 py-3 flex items-center gap-3 shrink-0">
-              <button className="p-2 text-primary hover:bg-secondary rounded-md transition-colors shrink-0">
-                <Share2 size={20} />
-              </button>
-              <input
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                placeholder="Type your message..."
-                disabled={isLoading}
-                className="flex-1 bg-secondary rounded-lg px-4 py-2.5 text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-ring text-sm disabled:opacity-50"
-              />
-              <button
-                onClick={handleSend}
-                disabled={isLoading}
-                className="p-2 text-primary hover:bg-secondary rounded-md transition-colors shrink-0 disabled:opacity-50"
-              >
-                <Send size={20} />
-              </button>
             </div>
-          </>
-        )}
+          )}
+
+          {/* Email collection — triggered by backend requires_email flag */}
+          {showEmailInput && (
+            <div className="mx-auto w-full max-w-sm bg-gradient-to-br from-secondary to-secondary/80 rounded-2xl p-5 flex flex-col gap-3 shadow-sm border border-border/50 animate-in fade-in slide-in-from-bottom-3 duration-300">
+              <div className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <Mail size={15} className="text-primary" />
+                </div>
+                <span>{i.emailPrompt}</span>
+              </div>
+              <input
+                type="email"
+                value={emailAddress}
+                onChange={(e) => setEmailAddress(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSubmitEmail()}
+                placeholder={i.emailPlaceholder}
+                className="bg-background rounded-xl px-4 py-2.5 text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm transition-shadow"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSubmitEmail}
+                  disabled={isSubmittingEmail}
+                  className="flex-1 bg-primary text-primary-foreground rounded-xl px-4 py-2.5 text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+                >
+                  {isSubmittingEmail ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : (
+                    <Send size={15} />
+                  )}
+                  {i.submit}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowEmailInput(false);
+                    setEmailAddress("");
+                  }}
+                  className="px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-background rounded-xl transition-all border border-transparent hover:border-border"
+                >
+                  {i.skip}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+      )}
+
+      {/* ──── Input bar — always visible ──── */}
+      <div className="border-t border-border px-4 sm:px-5 py-3 bg-background/80 backdrop-blur-sm shrink-0">
+        <div className="flex items-center gap-2 max-w-3xl mx-auto">
+          <input
+            ref={inputRef}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+            placeholder={i.placeholder}
+            disabled={isLoading}
+            className="flex-1 bg-secondary rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/40 border border-border/50 focus:border-primary/40 text-sm disabled:opacity-50 transition-all"
+          />
+          <button
+            onClick={handleSend}
+            disabled={isLoading || !message.trim()}
+            className="p-3 bg-primary text-primary-foreground rounded-xl hover:opacity-90 active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed shrink-0 shadow-sm"
+          >
+            <Send size={18} />
+          </button>
+        </div>
       </div>
     </div>
   );

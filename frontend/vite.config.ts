@@ -3,6 +3,21 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 // https://vitejs.dev/config/
+const printUrls = () => ({
+  name: "print-urls",
+  configureServer(server: any) {
+    server.httpServer?.once("listening", () => {
+      const addr = server.httpServer.address();
+      const port = typeof addr === "object" ? addr.port : 8080;
+      setTimeout(() => {
+        console.log(`\n  \x1b[36m✔ GetMee Chat UI:\x1b[0m  http://localhost:${port}/`);
+        console.log(`  \x1b[36m✔ Backend API:\x1b[0m    http://localhost:8001/`);
+        console.log(`  \x1b[36m✔ Swagger Docs:\x1b[0m   http://localhost:8001/docs\n`);
+      }, 100);
+    });
+  },
+});
+
 export default defineConfig(() => ({
   server: {
     host: "::",
@@ -10,8 +25,14 @@ export default defineConfig(() => ({
     hmr: {
       overlay: false,
     },
+    proxy: {
+      "/api": {
+        target: "http://localhost:8001",
+        changeOrigin: true,
+      },
+    },
   },
-  plugins: [react()],
+  plugins: [react(), printUrls()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
