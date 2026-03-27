@@ -587,23 +587,63 @@ export default function ChatBot({ apiBase = "http://localhost:8001", logoUrl }: 
               </div>
             </div>
           </div>
-          <div style={styles.headerActions}>
-            {/* Language toggle */}
-            <button
-              style={styles.langToggle}
-              onClick={() => setLang(lang === "en" ? "es" : "en")}
-              title={lang === "en" ? "Cambiar a Español" : "Switch to English"}
+          {/* Header controls: language dropdown, minimize, close */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginLeft: "auto" }}>
+            <select
+              aria-label="Select language"
+              value={lang}
+              onChange={e => setLang(e.target.value as Language)}
+              style={{
+                borderRadius: "12px",
+                fontSize: "12px",
+                padding: "4px 8px",
+                border: `1px solid ${COLORS.border}`,
+                background: COLORS.secondary,
+                color: COLORS.primary,
+                cursor: "pointer",
+                outline: "none",
+                fontWeight: 600,
+                minWidth: "80px",
+              }}
             >
-              <IconGlobe />
-              {lang === "en" ? "ES" : "EN"}
-            </button>
-            {chatStarted && (
-              <button style={styles.headerBtn} onClick={resetChat} title="New chat">
-                <IconX />
-              </button>
-            )}
-            <button style={styles.headerBtn} onClick={() => setOpen(false)} title="Minimize">
+              <option value="en">English</option>
+              <option value="es">Español</option>
+            </select>
+            <button
+              aria-label={open ? (chatStarted ? "Minimize chat" : "Minimize chatbot") : "Expand chat"}
+              title="Minimize"
+              onClick={() => setOpen(false)}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "6px",
+                borderRadius: "6px",
+                color: COLORS.muted,
+                display: "flex",
+                alignItems: "center",
+                transition: "background 0.15s",
+              }}
+            >
               <IconMinus />
+            </button>
+            <button
+              aria-label="Close chat"
+              title="Close"
+              onClick={() => setOpen(false)}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "6px",
+                borderRadius: "6px",
+                color: COLORS.muted,
+                display: "flex",
+                alignItems: "center",
+                transition: "background 0.15s",
+              }}
+            >
+              <IconX />
             </button>
           </div>
         </div>
