@@ -277,45 +277,100 @@ const ChatWidget = () => {
     }
   };
 
+  const [showLangDropdown, setShowLangDropdown] = useState(false);
+
   return (
     <div className="flex flex-col w-full h-screen bg-background text-foreground">
       {/* ──── Header ──── */}
-      <header className="flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-primary/5 to-primary/10 border-b border-border shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center overflow-hidden">
-            <img src={logo} alt="GetMee" className="w-9 h-9 object-contain" />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-foreground leading-tight tracking-tight">
+      <header className="flex items-center justify-between px-3 py-3 sm:px-5 sm:py-4 shrink-0 border-b border-border bg-white">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <img
+            src={logo}
+            alt="Getmee"
+            className="w-10 h-10 sm:w-12 sm:h-12 object-contain flex-shrink-0"
+          />
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-lg font-semibold text-foreground truncate">
               {i.title}
             </h2>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="w-2 h-2 rounded-full bg-online animate-pulse" />
-              <span className="text-xs text-muted-foreground font-medium">
+            <div className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+              <span className="text-xs sm:text-sm text-muted-foreground">
                 {i.online}
               </span>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setLang(lang === "en" ? "es" : "en")}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-background border border-border text-primary hover:bg-primary hover:text-primary-foreground transition-all shadow-sm"
-            title={lang === "en" ? "Cambiar a Español" : "Switch to English"}
-          >
-            <Globe size={13} />
-            {lang === "en" ? "ES" : "EN"}
-          </button>
-          {chatStarted && (
+        <div className="flex items-center gap-2">
+          {/* Language Dropdown */}
+          <div className="relative">
             <button
-              onClick={resetChat}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full bg-background border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 transition-all shadow-sm"
-              title={i.newChat}
+              type="button"
+              onClick={() => setShowLangDropdown((prev) => !prev)}
+              className="h-6 sm:h-6 md:h-7 min-w-[56px] sm:min-w-[64px] md:min-w-[92px] inline-flex items-center justify-between gap-1 rounded-lg border border-primary bg-primary px-2 text-[10px] sm:text-[11px] md:text-sm text-white outline-none focus:ring-2 focus:ring-primary"
+              aria-label="Language"
+              title="Language"
+              aria-expanded={showLangDropdown}
             >
-              <RotateCcw size={12} />
-              {i.newChat}
+              <span className="md:hidden">{lang === "en" ? "EN" : "ES"}</span>
+              <span className="hidden md:inline">{lang === "en" ? "English" : "Espanol"}</span>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
             </button>
-          )}
+            {showLangDropdown && (
+              <div className="absolute right-0 mt-2 w-20 sm:w-24 md:w-32 rounded-lg border border-border bg-white p-1 shadow-lg z-20">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLang("en");
+                    setShowLangDropdown(false);
+                  }}
+                  className={`w-full rounded-md px-2 py-1.5 text-left text-xs md:text-sm transition-colors ${
+                    lang === "en"
+                      ? "bg-secondary text-foreground"
+                      : "text-foreground hover:bg-secondary"
+                  }`}
+                >
+                  <span className="md:hidden">EN</span>
+                  <span className="hidden md:inline">English</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLang("es");
+                    setShowLangDropdown(false);
+                  }}
+                  className={`w-full rounded-md px-2 py-1.5 text-left text-xs md:text-sm transition-colors ${
+                    lang === "es"
+                      ? "bg-secondary text-foreground"
+                      : "text-foreground hover:bg-secondary"
+                  }`}
+                >
+                  <span className="md:hidden">ES</span>
+                  <span className="hidden md:inline">Espanol</span>
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Minimize Icon */}
+          <button
+            type="button"
+            onClick={() => {/* implement minimize logic here */}}
+            className="p-1.5 text-muted-foreground hover:bg-secondary rounded-md transition-colors flex-shrink-0"
+            aria-label="Minimize chat"
+            title="Minimize chat"
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h8" /></svg>
+          </button>
+          {/* Close Icon */}
+          <button
+            type="button"
+            onClick={() => {/* implement close logic here */}}
+            className="p-1.5 text-destructive hover:bg-secondary rounded-md transition-colors flex-shrink-0"
+            aria-label="Close chat"
+            title="Close chat"
+          >
+            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M18 6L6 18M6 6l12 12" /></svg>
+          </button>
         </div>
       </header>
 
