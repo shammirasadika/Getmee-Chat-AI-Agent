@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Mail, Loader2, Globe, RotateCcw, MessageCircle, Sparkles, SmilePlus, Frown } from "lucide-react";
+import { Send, Mail, Loader2, Globe, RotateCcw, MessageCircle, Sparkles, SmilePlus, Frown, Share2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import logo from "@/assets/getmee-logo.svg.png";
 
@@ -593,22 +593,25 @@ const ChatWidget = () => {
       {/* ──── Input bar — always visible ──── */}
       <div className="border-t border-border px-4 sm:px-5 py-3 bg-background/80 backdrop-blur-sm shrink-0">
         <div className="flex items-center gap-2 max-w-3xl mx-auto">
-          <input
-            ref={inputRef}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-            placeholder={i.placeholder}
-            disabled={isLoading}
-            className="flex-1 bg-secondary rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/40 border border-border/50 focus:border-primary/40 text-sm disabled:opacity-50 transition-all"
-          />
-          <button
-            onClick={handleSend}
-            disabled={isLoading || !message.trim()}
-            className="p-3 bg-primary text-primary-foreground rounded-xl hover:opacity-90 active:scale-95 transition-all disabled:opacity-30 disabled:cursor-not-allowed shrink-0 shadow-sm"
-          >
-            <Send size={18} />
-          </button>
+          <div className="flex items-center border rounded-full px-3 py-2 bg-white shadow-sm mt-4">
+            <Share2 className="text-primary mr-2" size={20} />
+            <input
+              ref={inputRef}
+              type="text"
+              className="flex-1 border-none outline-none bg-transparent text-sm"
+              placeholder={i.placeholder}
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (message.trim()) sendToApi(message);
+                }
+              }}
+              disabled={isLoading}
+              aria-label="Type your message"
+            />
+          </div>
         </div>
       </div>
     </div>
