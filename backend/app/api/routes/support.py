@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
+import traceback
 from app.services.support_service import SupportService
 from app.services.session_service import SessionService
 from app.models.common import SupportSubmitRequest, SupportSubmitResponse
@@ -35,6 +36,7 @@ async def submit_support_request(request: SupportSubmitRequest):
             language=request.language,
             fallback_message=fallback_message,
             chat_summary=chat_summary,
+            source=request.source or "rag_fallback",
         )
         return SupportSubmitResponse(
             success=True,
@@ -42,6 +44,8 @@ async def submit_support_request(request: SupportSubmitRequest):
             request_id=result.get("request_id"),
         )
     except Exception as e:
+        print("[Support API] Exception in submit_support_request:")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

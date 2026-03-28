@@ -67,6 +67,7 @@ class ContactSupportRequest(BaseModel):
     session_key: str = Field(..., example="abc123")
     user_email: Optional[str] = None
     issue_summary: Optional[str] = None  # auto-derived if empty
+    source: Optional[str] = None  # escalation source
 
 class ContactSupportResponse(BaseModel):
     success: bool

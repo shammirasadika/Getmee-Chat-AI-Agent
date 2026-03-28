@@ -15,6 +15,7 @@ class SupportSubmitRequest(BaseModel):
     user_email: EmailStr
     user_message: str
     language: Optional[str] = "en"
+    source: Optional[str] = None  # 'rag_fallback' or 'user_unsatisfied'
 
 class SupportSubmitResponse(BaseModel):
     success: bool

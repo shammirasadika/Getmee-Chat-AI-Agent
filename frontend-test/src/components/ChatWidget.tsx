@@ -113,6 +113,44 @@ const ChatWidget = () => {
   const [lastFallbackMessage, setLastFallbackMessage] = useState("");
   const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
 
+  // Session rating popup state
+  const [showSessionRating, setShowSessionRating] = useState(false);
+  const [sessionRating, setSessionRating] = useState(0);
+  const [sessionComment, setSessionComment] = useState("");
+  // Popup priority: defer session rating if email popup is open
+  const [pendingSessionRating, setPendingSessionRating] = useState(false);
+
+  // Submit session rating to backend (must be in component scope)
+  const submitSessionRating = async () => {
+    if (sessionRating < 1 || sessionRating > 5) return;
+    try {
+      await fetch(`${API_BASE}/api/feedback/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_key: sessionId,
+          rating: sessionRating,
+          comment: sessionComment,
+        }),
+      });
+      setShowSessionRating(false);
+      setSessionRating(0);
+      setSessionComment("");
+      setMessages((prev) => [
+        ...prev,
+        { text: "Thank you for your feedback!", isUser: false, time: getTime() },
+      ]);
+    } catch (err) {
+      setShowSessionRating(false);
+      setSessionRating(0);
+      setSessionComment("");
+      setMessages((prev) => [
+        ...prev,
+        { text: "Failed to submit session rating. Please try again later.", isUser: false, time: getTime() },
+      ]);
+    }
+  };
+
   // Feedback state: messageId -> "positive" | "negative" | "sending"
   const [feedbackMap, setFeedbackMap] = useState<Record<string, string>>({});
 
@@ -151,6 +189,16 @@ const ChatWidget = () => {
       if (data.requires_email || noInfoPattern.test(data.answer)) {
         setShowEmailInput(true);
         setLastFallbackMessage(userText);
+        return;
+      }
+
+      // Special-case: trigger email popup if bot response suggests contacting support
+      const supportTriggerPattern = /contact (our )?support team|further assistance|reach out to support|our team can help|contact support/i;
+      if (supportTriggerPattern.test(data.answer)) {
+        setShowEmailInput(true);
+        setLastFallbackMessage(userText);
+        // Optionally, you can store the trigger source for backend as 'bot_directed_support' if needed
+        // (e.g., by adding a hidden field or passing it in the support API call)
       }
     } catch (err) {
       console.error("Chat API error:", err);
@@ -178,7 +226,17 @@ const ChatWidget = () => {
 
     setIsSubmittingEmail(true);
     try {
-      const res = await fetch(`${API_BASE}/api/support`, {
+      // Determine the source for support escalation
+      let source = "rag_fallback";
+      if (showSessionRating) {
+        source = "user_unsatisfied";
+      } else if (lastFallbackMessage && lastFallbackMessage._botDirectedSupport) {
+        source = "bot_directed_support";
+      } else if (lastFallbackMessage && lastFallbackMessage._source) {
+        source = lastFallbackMessage._source;
+      }
+
+      const res = await fetch(`${API_BASE}/api/support/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -186,6 +244,7 @@ const ChatWidget = () => {
           user_email: emailAddress,
           user_message: lastFallbackMessage,
           language: lang,
+          source,
         }),
       });
       if (!res.ok) throw new Error(`Support API error: ${res.status}`);
@@ -201,6 +260,11 @@ const ChatWidget = () => {
           time: getTime(),
         },
       ]);
+      // After closing email popup, if session rating was pending, show it now
+      if (pendingSessionRating) {
+        setShowSessionRating(true);
+        setPendingSessionRating(false);
+      }
     } catch (err) {
       console.error("Support API error:", err);
       setMessages((prev) => [
@@ -266,7 +330,19 @@ const ChatWidget = () => {
         }),
       });
       if (!res.ok) throw new Error(`Feedback API error: ${res.status}`);
+      const data = await res.json();
       setFeedbackMap((prev) => ({ ...prev, [messageId]: feedback }));
+      if (data.show_support_options) {
+        setShowEmailInput(true);
+        setLastFallbackMessage(""); // Optionally set context if needed
+      }
+      if (backendFeedback === "satisfied") {
+        if (showEmailInput) {
+          setPendingSessionRating(true);
+        } else {
+          setShowSessionRating(true);
+        }
+      }
     } catch (err) {
       console.error("Feedback error:", err);
       setFeedbackMap((prev) => {
@@ -280,7 +356,61 @@ const ChatWidget = () => {
   const [showLangDropdown, setShowLangDropdown] = useState(false);
 
   return (
-    <div className="flex flex-col w-full h-screen bg-background text-foreground">
+    <div className="flex flex-col w-full h-screen bg-background text-foreground relative">
+      {/* Session Rating Popup — absolutely positioned above input bar */}
+      {showSessionRating && (
+        <div
+          className="absolute left-0 right-0 bottom-20 flex justify-center z-30 pointer-events-auto"
+          style={{ pointerEvents: 'auto' }}
+        >
+          <div className="w-full max-w-sm bg-gradient-to-br from-secondary to-secondary/80 rounded-2xl p-5 flex flex-col gap-3 shadow-sm border border-border/50 animate-in fade-in slide-in-from-bottom-3 duration-300">
+            <div className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <span className="text-yellow-400 text-xl">★</span>
+              </div>
+              <span>Rate your overall session</span>
+            </div>
+            <div className="flex gap-1 mb-2 justify-center">
+              {[1,2,3,4,5].map((star) => (
+                <button
+                  key={star}
+                  className={
+                    star <= sessionRating
+                      ? "text-yellow-400 text-2xl"
+                      : "text-gray-300 text-2xl"
+                  }
+                  onClick={() => setSessionRating(star)}
+                  aria-label={`Rate ${star}`}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+            <textarea
+              className="w-full border rounded p-2 mb-2 text-sm"
+              rows={2}
+              placeholder="Optional comment"
+              value={sessionComment}
+              onChange={e => setSessionComment(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button
+                className="flex-1 bg-primary text-primary-foreground rounded-xl px-4 py-2.5 text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+                onClick={submitSessionRating}
+                disabled={sessionRating < 1 || sessionRating > 5}
+              >
+                Submit
+              </button>
+              <button
+                className="px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-background rounded-xl transition-all border border-transparent hover:border-border"
+                onClick={() => setShowSessionRating(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* ──── Header ──── */}
       <header className="flex items-center justify-between px-3 py-3 sm:px-5 sm:py-4 shrink-0 border-b border-border bg-white">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -577,6 +707,8 @@ const ChatWidget = () => {
                   onClick={() => {
                     setShowEmailInput(false);
                     setEmailAddress("");
+                    // If email popup is dismissed, clear pending session rating
+                    if (pendingSessionRating) setPendingSessionRating(false);
                   }}
                   className="px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-background rounded-xl transition-all border border-transparent hover:border-border"
                 >
@@ -592,8 +724,30 @@ const ChatWidget = () => {
 
       {/* ──── Input bar — always visible ──── */}
       <div className="border-t border-border px-4 sm:px-5 py-3 bg-background/80 backdrop-blur-sm shrink-0">
-        <div className="flex items-center gap-2 max-w-3xl mx-auto">
-          <div className="flex items-center border rounded-full px-3 py-2 bg-white shadow-sm mt-4">
+        <form
+          className="flex items-center gap-2 max-w-3xl mx-auto"
+          onSubmit={e => {
+            e.preventDefault();
+            if (!message.trim() || isLoading) return;
+            const text = message;
+            if (!chatStarted) {
+              setMessages([
+                { text: i.botGreeting, isUser: false, time: getTime() },
+                { text, isUser: true, time: getTime() },
+              ]);
+              setChatStarted(true);
+            } else {
+              setMessages((prev) => [
+                ...prev,
+                { text, isUser: true, time: getTime() },
+              ]);
+            }
+            setMessage("");
+            sendToApi(text);
+            inputRef.current?.focus();
+          }}
+        >
+          <div className="flex items-center border rounded-full px-3 py-2 bg-white shadow-sm mt-4 flex-1">
             <Share2 className="text-primary mr-2" size={20} />
             <input
               ref={inputRef}
@@ -602,17 +756,19 @@ const ChatWidget = () => {
               placeholder={i.placeholder}
               value={message}
               onChange={e => setMessage(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (message.trim()) sendToApi(message);
-                }
-              }}
               disabled={isLoading}
               aria-label="Type your message"
             />
+            <button
+              type="submit"
+              className="ml-2 bg-primary hover:bg-green-600 text-primary-foreground rounded-full p-2 transition-colors flex items-center justify-center disabled:opacity-50"
+              disabled={isLoading || !message.trim()}
+              aria-label="Send message"
+            >
+              <Send size={20} />
+            </button>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );

@@ -39,6 +39,7 @@ class PostgresClient:
                     status VARCHAR(20) NOT NULL DEFAULT 'pending',
                     email_sent BOOLEAN NOT NULL DEFAULT FALSE,
                     chat_summary TEXT,
+                    source VARCHAR(32), -- 'rag_fallback' or 'user_unsatisfied'
                     created_at TIMESTAMP NOT NULL DEFAULT NOW()
                 )
             """)
@@ -269,8 +270,8 @@ class PostgresClient:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """INSERT INTO support_requests
-                    (session_id, user_message, user_email, fallback_message, language, status, email_sent, chat_summary)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    (session_id, user_message, user_email, fallback_message, language, status, email_sent, chat_summary, source)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                    RETURNING id""",
                 data.get("session_id"),
                 data.get("user_message"),
@@ -280,6 +281,7 @@ class PostgresClient:
                 data.get("status", "pending"),
                 data.get("email_sent", False),
                 data.get("chat_summary"),
+                data.get("source"),
             )
             return row["id"]
 

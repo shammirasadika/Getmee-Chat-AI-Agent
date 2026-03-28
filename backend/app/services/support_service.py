@@ -26,6 +26,7 @@ class SupportService:
         language: str,
         fallback_message: str = None,
         chat_summary: str = None,
+        source: str = "rag_fallback",
     ) -> dict:
         """
         Full fallback escalation flow:
@@ -44,6 +45,7 @@ class SupportService:
             "status": "pending",
             "email_sent": False,
             "chat_summary": chat_summary,
+            "source": source,
         })
         print(f"[Support] Saved support request #{request_id} for session {session_id}", flush=True)
 

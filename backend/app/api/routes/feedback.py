@@ -157,6 +157,18 @@ async def contact_support_endpoint(
             db = PostgresClient(_settings.POSTGRES_URL)
             await db.update_session_email(session_id, request.user_email)
 
+        # Save to support_requests for unified escalation tracking
+        from app.services.support_service import SupportService
+        support_service = SupportService()
+        await support_service.handle_fallback_escalation(
+            session_id=session_id,
+            user_message=issue_summary,
+            user_email=request.user_email or "",
+            language="en",
+            fallback_message=None,
+            chat_summary=None,
+            source=request.source or "user_unsatisfied",
+        )
         ticket = await ticket_service.create_ticket(
             session_id=session_id,
             session_key=request.session_key,
