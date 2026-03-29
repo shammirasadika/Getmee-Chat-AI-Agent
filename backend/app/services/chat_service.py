@@ -8,8 +8,140 @@ from app.core.config import settings
 from app.models.chat import ChatRequest, ChatResponse
 from app.utils.helpers import clean_context_chunk, is_meaningful_chunk, filter_relevant_chunks, is_language_clean, MIN_PRIMARY_CONFIDENCE
 import uuid
+import re
+
 
 class ChatService:
+    SMALL_TALK_KEYWORDS = {
+        "thanks": "You’re welcome! Let me know if you need anything else.",
+        "thank you": "You’re welcome! Let me know if you need anything else.",
+        "ok": "Alright. Let me know if you need help with anything else.",
+        "okay": "Alright. Let me know if you need help with anything else.",
+        "hello": "Hello! How can I help you today?",
+        "hi": "Hello! How can I help you today?",
+        "bye": "Goodbye! Feel free to come back anytime.",
+        "goodbye": "Goodbye! Feel free to come back anytime.",
+        "sure": "Alright! Let me know if you have more questions.",
+        "got it": "Great! Let me know if you need anything else.",
+    }
+
+    def _detect_context_update(self, message: str) -> str:
+        msg = message.strip().lower()
+        # Detect name update: "my name is ..." or "i am ..."
+        if msg.startswith("my name is "):
+            name = message[11:].strip().split()[0]
+            return name
+        if msg.startswith("i am "):
+            name = message[5:].strip().split()[0]
+            return name
+        return None
+
+    def _detect_small_talk(self, message: str) -> str:
+        msg = message.strip().lower()
+        for k, v in self.SMALL_TALK_KEYWORDS.items():
+            if msg == k:
+                return v
+        return None
+
+    def _detect_low_intent(self, message: str) -> str:
+        msg = message.strip().lower()
+        # Regex patterns for flexible matching
+        patterns = [
+            r"^h+m+$",           # hm, hmm, hmmm, etc.
+            r"^o+k+a*y*\.*$",   # ok, okay, ok..., okay...
+            r"^t+h+a+n+k+s*\.*$", # thanks, thanksss, thanks...
+            r"^t+h+a+n+k\s*y+\.*$", # thank you, thank you...
+            r"^h+i+\.*$",        # hi, hii, hi...
+            r"^h+e+l+l+o+\.*$",  # hello, helloo, hello...
+            r"^b+y+e+\.*$",      # bye, byee, bye...
+            r"^s+u+r+e+\.*$",    # sure, sureee, sure...
+            r"^g+o+t+\s*i+t+\.*$", # got it, got it...
+        ]
+        responses = [
+            "Let me know if you need help with anything.",
+            "Alright. Let me know if you need help with anything else.",
+            "You’re welcome! Let me know if you need anything else.",
+            "You’re welcome! Let me know if you need anything else.",
+            "Hello! How can I help you today?",
+            "Hello! How can I help you today?",
+            "Goodbye! Feel free to come back anytime.",
+            "Alright! Let me know if you have more questions.",
+            "Great! Let me know if you need anything else.",
+        ]
+        for pat, resp in zip(patterns, responses):
+            if re.match(pat, msg):
+                return resp
+        return None
+
+    def _detect_question_intent(self, message: str) -> bool:
+        msg = message.strip().lower()
+        if '?' in msg:
+            return True
+        question_starts = (
+            'how', 'what', 'why', 'when', 'where', 'can', 'do', 'is', 'are', 'does', 'could', 'would', 'should', 'will', 'did', 'who', 'whom', 'whose', 'which', 'may', 'shall'
+        )
+        # Check if message starts with a question word (allow leading punctuation/whitespace)
+        msg_start = msg.lstrip(' .,!')
+        for q in question_starts:
+            if msg_start.startswith(q + ' '):
+                return True
+        return False
+
+    def _answer_from_session_context(self, message: str, recent_messages: list) -> str:
+        msg = message.strip().lower()
+        # Simple logic for demo: look for name or last user message
+        if "what is my name" in msg:
+            # Look for a message like "my name is ..."
+            for m in reversed(recent_messages):
+                if m.get("role") == "user" and "my name is" in m.get("text", "").lower():
+                    # Extract name
+                    parts = m["text"].split("my name is", 1)
+                    if len(parts) > 1:
+                        name = parts[1].strip().split()[0]
+                        return f"Your name is {name}."
+            return "I don’t know your name yet."
+        if "what did i just say" in msg:
+            # Return last user message (excluding current)
+            user_msgs = [m["text"] for m in recent_messages if m.get("role") == "user"]
+            if len(user_msgs) > 1:
+                return f"You just said: '{user_msgs[-2]}'."
+            return "I don’t have your previous message."
+        if "what language did i choose" in msg or "what is my language" in msg:
+            for m in reversed(recent_messages):
+                if m.get("role") == "user" and m.get("language"):
+                    return f"You chose {m['language']}."
+            return "I don’t know your chosen language yet."
+        return None
+
+    async def _get_session_context_answer(self, msg: str, session_key: str, language: str, session_uuid: str, message: str):
+        # Try to get user_name from Redis context
+        if "what is my name" in msg:
+            ctx = await self.message_service.redis_session.get_context(session_key)
+            user_name = ctx.get("user_name") if ctx else None
+            if user_name:
+                return ChatResponse(
+                    answer=f"Your name is {user_name}.",
+                    language=language,
+                    sources=[],
+                    fallback_used=False,
+                    retrieval_language=language,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
+            else:
+                return ChatResponse(
+                    answer="I don’t have your name yet.",
+                    language=language,
+                    sources=[],
+                    fallback_used=False,
+                    retrieval_language=language,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
+        return None
+
     def __init__(self):
         self.language_service = LanguageService()
         self.retrieval_service = RetrievalService()
@@ -70,12 +202,94 @@ class ChatService:
         return retrieved, relevant, best_distance, max_overlap
 
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
+
         # 0. Ensure session exists in PG + Redis
         session_key = request.session_id  # frontend sends this as session_key
         session = await self.session_service.get_or_create_session(session_key, request.language)
         session_uuid = session["id"]  # PG UUID
 
-        # 1. Determine user language
+
+        # 1. Question intent detection (takes priority)
+        if self._detect_question_intent(request.message):
+            # 1a. Context update detection (no RAG, no fallback)
+            name_update = self._detect_context_update(request.message)
+            if name_update:
+                language = request.language or self.language_service.detect_language(request.message)
+                # Store name in Redis context (as user_name)
+                await self.message_service.redis_session.update_context(session_key, user_name=name_update)
+                await self.message_service.save_user_message(
+                    session_id=session_uuid, session_key=session_key,
+                    text=request.message, language=language,
+                )
+                return ChatResponse(
+                    answer="Nice to meet you.",
+                    language=language,
+                    sources=[],
+                    fallback_used=False,
+                    retrieval_language=language,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
+            # 1b. Session context question (from Redis)
+            recent_messages = []
+            try:
+                recent_messages = await self.message_service.redis_session.get_messages(session_key)
+            except Exception:
+                pass
+            msg = request.message.strip().lower()
+            language = request.language or self.language_service.detect_language(request.message)
+            session_context_answer = await self._get_session_context_answer(msg, session_key, language, session_uuid, request.message)
+            if session_context_answer:
+                await self.message_service.save_user_message(
+                    session_id=session_uuid, session_key=session_key,
+                    text=request.message, language=language,
+                )
+                return session_context_answer
+        else:
+            # 2. Small-talk/low-intent detection (only if not a question)
+            small_talk_resp = self._detect_small_talk(request.message) or self._detect_low_intent(request.message)
+            if small_talk_resp:
+                language = request.language or self.language_service.detect_language(request.message)
+                await self.message_service.save_user_message(
+                    session_id=session_uuid, session_key=session_key,
+                    text=request.message, language=language,
+                )
+                return ChatResponse(
+                    answer=small_talk_resp,
+                    language=language,
+                    sources=[],
+                    fallback_used=False,
+                    retrieval_language=language,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
+
+        # 3. Context update detection (no RAG, no fallback)
+        name_update = self._detect_context_update(request.message)
+        if name_update:
+            language = request.language or self.language_service.detect_language(request.message)
+            # Store name in Redis context (as user_name)
+            await self.message_service.redis_session.update_context(session_key, user_name=name_update)
+            await self.message_service.save_user_message(
+                session_id=session_uuid, session_key=session_key,
+                text=request.message, language=language,
+            )
+            return ChatResponse(
+                answer="Nice to meet you.",
+                language=language,
+                sources=[],
+                fallback_used=False,
+                retrieval_language=language,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
+
+        # 4. Proceed as before: Save user message to PG + Redis, then RAG
+
+        # 5. Proceed as before: Save user message to PG + Redis
         language = request.language or self.language_service.detect_language(request.message)
         lang_name = self.language_service.get_language_name(language)
         retrieval_language = language
@@ -83,7 +297,6 @@ class ChatService:
 
         print(f"[Chat] User language: {language} ({lang_name}) | Query: '{request.message[:80]}'", flush=True)
 
-        # Save user message to PG + Redis
         user_msg = await self.message_service.save_user_message(
             session_id=session_uuid, session_key=session_key,
             text=request.message, language=language,
