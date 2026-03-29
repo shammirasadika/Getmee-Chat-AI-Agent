@@ -17,7 +17,11 @@ const t = {
     greeting: "Hello 👋",
     subtitle: "I'm the GetMee AI Assistant",
     askAbout: "Ask me anything about:",
-    topics: ["Interview preparation", "Resume tips", "Using the GetMee platform"],
+    topics: [
+      "Login & account access",
+      "Platform features & setup",
+      "User & group management"
+    ],
     quickLabel: "Quick Questions:",
     quickQuestions: [
       "How does AI scoring work?",
@@ -81,11 +85,7 @@ const IconMinus = () => (
     <line x1="5" y1="12" x2="19" y2="12" />
   </svg>
 );
-const IconChat = () => (
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-  </svg>
-);
+// IconChat SVG removed
 const IconMail = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
@@ -563,7 +563,7 @@ export default function ChatBot({ apiBase = "http://localhost:8001", logoUrl }: 
   if (!open) {
     return (
       <button style={styles.fab} onClick={() => setOpen(true)} aria-label="Open chat">
-        <IconChat />
+        {/* Message icon removed */}
       </button>
     );
   }
