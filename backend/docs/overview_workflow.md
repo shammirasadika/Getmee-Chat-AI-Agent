@@ -103,4 +103,32 @@ flowchart TD
 
 ---
 
+## 6. Chatbot Message Handling Flow (2026 Update)
+
+The chatbot now follows a strict, user-friendly message handling order to avoid unnecessary fallback/escalation and improve conversational UX:
+
+**PROCESS ORDER:**
+1. **Small-talk/Low-Intent Detection**
+   - Examples: "hi", "ok", "hm", "thanks", "bye"
+   - → Reply: “I’m here if you need help.” (No RAG, no fallback, no escalation)
+2. **Context Update Detection**
+   - Examples: "my name is Alex", "I am Alex"
+   - → Extract and store name in Redis (user_name), reply: “Nice to meet you.” (No RAG, no fallback)
+3. **Session Context Question**
+   - Example: "what is my name?"
+   - → Read from Redis. If found: “Your name is [stored_name].” If not: “I don’t have your name yet.” (No RAG, no fallback)
+4. **RAG (ChromaDB) Retrieval**
+   - Only for real knowledge-base questions (e.g., “how to register?”)
+5. **Fallback/Escalation**
+   - Only if all above fail (never for small-talk, context update, or context-based answers)
+
+**Key Rules:**
+- Never escalate or fallback for small-talk, context updates, or context-based answers.
+- Always check Redis session context before RAG.
+- Only escalate if no answer is possible from context or RAG.
+
+This flow ensures a more natural, helpful, and non-intrusive chatbot experience for users.
+
+---
+
 For more details, see the backend/docs/ directory and code comments in the feedback and support modules.
