@@ -1,5 +1,13 @@
+  // Type guard for fallback message object
+  function isFallbackObj(msg: unknown): msg is { _botDirectedSupport?: boolean; _source?: string } {
+    return (
+      typeof msg === "object" &&
+      msg !== null &&
+      ("_botDirectedSupport" in msg || "_source" in msg)
+    );
+  }
 import { useState, useRef, useEffect } from "react";
-import { Send, Mail, Loader2, Globe, RotateCcw, MessageCircle, Sparkles, SmilePlus, Frown, Share2 } from "lucide-react";
+import { Send, Mail, Loader2, Globe, RotateCcw, MessageCircle, Sparkles, SmilePlus, Frown, Upload } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import logo from "@/assets/getmee-logo.svg.png";
 
@@ -112,6 +120,10 @@ const ChatWidget = () => {
   const [emailAddress, setEmailAddress] = useState("");
   const [lastFallbackMessage, setLastFallbackMessage] = useState("");
   const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
+
+  // Widget visibility state for minimize/close
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [isClosed, setIsClosed] = useState(false);
 
   // Session rating popup state
   const [showSessionRating, setShowSessionRating] = useState(false);
@@ -230,9 +242,13 @@ const ChatWidget = () => {
       let source = "rag_fallback";
       if (showSessionRating) {
         source = "user_unsatisfied";
-      } else if (lastFallbackMessage && lastFallbackMessage._botDirectedSupport) {
+      } else if (
+        isFallbackObj(lastFallbackMessage) && lastFallbackMessage._botDirectedSupport
+      ) {
         source = "bot_directed_support";
-      } else if (lastFallbackMessage && lastFallbackMessage._source) {
+      } else if (
+        isFallbackObj(lastFallbackMessage) && lastFallbackMessage._source
+      ) {
         source = lastFallbackMessage._source;
       }
 
@@ -505,13 +521,11 @@ const ChatWidget = () => {
       </header>
 
       {/* ──── Welcome screen ──── */}
-      {!chatStarted && (
+      {!chatStarted && !isMinimized && !isClosed && (
         <div className="flex-1 overflow-y-auto px-5 py-8 flex flex-col items-center gap-6">
           {/* Greeting */}
           <div className="text-center space-y-2">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
-              <MessageCircle size={28} className="text-primary" />
-            </div>
+            {/* Removed chat bubble icon */}
             <h3 className="text-2xl font-bold text-foreground tracking-tight">
               {i.greeting}
             </h3>
@@ -521,8 +535,8 @@ const ChatWidget = () => {
           </div>
 
           {/* Topics */}
-          <div className="w-full max-w-md bg-gradient-to-br from-chat-bubble to-chat-bubble/60 rounded-2xl p-5 shadow-sm border border-border/50">
-            <h4 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+          <div className="w-full max-w-md bg-gradient-to-br from-chat-bubble to-chat-bubble/60 rounded-2xl p-5 shadow-sm border border-border/50 mx-auto text-center">
+            <h4 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2 justify-center text-center">
               <Sparkles size={14} className="text-primary" />
               {i.askAbout}
             </h4>
@@ -530,7 +544,7 @@ const ChatWidget = () => {
               {i.topics.map((item) => (
                 <li
                   key={item}
-                  className="flex items-center gap-2.5 text-sm text-foreground/80"
+                  className="flex items-center gap-2.5 text-sm text-foreground/80 justify-center"
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
                   {item}
@@ -540,16 +554,16 @@ const ChatWidget = () => {
           </div>
 
           {/* Quick questions */}
-          <div className="w-full max-w-md">
+          <div className="w-full max-w-md mx-auto text-center">
             <h4 className="text-sm font-bold text-foreground mb-3 text-center">
               {i.quickQuestionLabel}
             </h4>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 items-center">
               {i.quickQuestions.map((q) => (
                 <button
                   key={q}
                   onClick={() => handleQuickQuestion(q)}
-                  className="group w-full text-left px-4 py-3 bg-background border border-border rounded-xl text-sm text-foreground hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm transition-all"
+                  className="group w-full text-center px-4 py-3 bg-background border border-border rounded-xl text-sm text-foreground hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm transition-all"
                 >
                   <span className="group-hover:text-primary transition-colors">
                     {q}
@@ -562,7 +576,7 @@ const ChatWidget = () => {
       )}
 
       {/* ──── Chat messages ──── */}
-      {chatStarted && (
+      {chatStarted && !isMinimized && !isClosed && (
         <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-5 flex flex-col gap-5">
           {messages.map((msg, idx) => (
             <div
@@ -748,7 +762,7 @@ const ChatWidget = () => {
           }}
         >
           <div className="flex items-center border rounded-full px-3 py-2 bg-white shadow-sm mt-4 flex-1">
-            <Share2 className="text-primary mr-2" size={20} />
+            <Upload className="text-primary mr-2" size={20} />
             <input
               ref={inputRef}
               type="text"
