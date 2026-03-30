@@ -18,12 +18,13 @@ interface ChatWidgetConfig {
   chatUrl?: string;
 }
 
-declare global {
-  interface Window {
-    ChatWidgetConfig?: ChatWidgetConfig;
-    GetMeeChat?: { init: (config?: ChatWidgetConfig) => void };
-  }
+
+// Augment the Window interface for TypeScript
+export interface WindowWithChatWidget extends Window {
+  ChatWidgetConfig?: ChatWidgetConfig;
+  GetMeeChat?: { init: (config?: ChatWidgetConfig) => void };
 }
+declare const window: WindowWithChatWidget;
 
 (function () {
   const DEFAULTS: Required<ChatWidgetConfig> = {
@@ -82,6 +83,7 @@ declare global {
 
   /* ---------- Floating mode ---------- */
   function mountFloating(config: Required<ChatWidgetConfig>) {
+
     const isRight = config.position === "bottom-right";
 
     // ---- Fab button ----
@@ -106,8 +108,10 @@ declare global {
       boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
       zIndex: "99998",
       transition: "transform 0.2s",
+      fontSize: "2rem",
+      fontWeight: "bold",
     });
-    fab.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+    fab.textContent = ""; // Ensure no icon is set
 
     // ---- Chat panel ----
     const panel = document.createElement("div");
@@ -136,10 +140,8 @@ declare global {
     fab.addEventListener("click", () => {
       isOpen = !isOpen;
       panel.style.display = isOpen ? "block" : "none";
-      // Switch icon between chat bubble and X
-      fab.innerHTML = isOpen
-        ? `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
-        : `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+      // Always show only X or nothing
+      fab.textContent = isOpen ? "✖" : "";
     });
 
     // ---- Mobile responsive: make panel full screen on small screens ----

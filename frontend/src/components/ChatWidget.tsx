@@ -509,9 +509,7 @@ const ChatWidget = () => {
         <div className="flex-1 overflow-y-auto px-5 py-8 flex flex-col items-center gap-6">
           {/* Greeting */}
           <div className="text-center space-y-2">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center mb-3">
-              <MessageCircle size={28} className="text-primary" />
-            </div>
+            {/* Removed chat bubble icon */}
             <h3 className="text-2xl font-bold text-foreground tracking-tight">
               {i.greeting}
             </h3>
