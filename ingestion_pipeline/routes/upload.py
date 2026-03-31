@@ -14,12 +14,22 @@ def embed_and_store_in_chromadb(chunks, metadata):
     from chroma_client import get_collection
     from services.embedding import generate_embedding
     collection = get_collection()
+    file_name = metadata.get("filename", "unknown")
+
+    # Replace old chunks for this file to prevent stale mixed-size chunks.
+    try:
+        collection.delete(where={"file_name": file_name})
+        logger.info(f"Deleted previous chunks for file: {file_name}")
+    except Exception as e:
+        logger.warning(f"Could not delete existing chunks for {file_name}: {e}")
+
     ids = [f"{metadata.get('filename', 'doc')}_chunk_{i+1}" for i in range(len(chunks))]
     embeddings = [generate_embedding(chunk) for chunk in chunks]
     metadatas = [{
         "document_id": metadata.get("document_id", "doc1"),
-        "file_name": metadata.get("filename", "unknown"),
-        "chunk_index": i+1
+        "file_name": file_name,
+        "chunk_index": i+1,
+        "chunk_type": "qa_pair"
     } for i in range(len(chunks))]
     try:
         collection.upsert(

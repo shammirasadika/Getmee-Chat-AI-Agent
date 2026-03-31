@@ -1,4 +1,5 @@
 import re
+from app.utils.query_normalizer import normalize_query_text
 
 def safe_get(d: dict, key: str, default=None):
     return d[key] if key in d else default
@@ -31,6 +32,12 @@ _STOPWORDS = {
     'this', 'that', 'these', 'those', 'i', 'me', 'my', 'myself', 'we',
     'our', 'you', 'your', 'he', 'him', 'his', 'she', 'her', 'it', 'its',
     'they', 'them', 'their',
+    # Generic high-frequency verbs — too ambiguous to be meaningful topic signals
+    # e.g. "not working" → "work" would falsely match "onboarding work"
+    'work', 'use', 'make', 'get', 'set', 'run', 'see', 'find', 'take',
+    'come', 'put', 'say', 'try', 'ask', 'call', 'show', 'help', 'let',
+    'need', 'want', 'give', 'keep', 'send', 'open', 'close', 'log',
+    'go', 'look', 'turn', 'start', 'stop', 'give', 'seem', 'feel',
     # Spanish stopwords
     'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'de', 'del',
     'en', 'y', 'o', 'que', 'es', 'por', 'con', 'para', 'como', 'pero',
@@ -42,7 +49,8 @@ _STOPWORDS = {
 
 def _extract_keywords(text: str) -> set:
     """Extract meaningful keywords from text, lowercased, stopwords removed."""
-    words = re.findall(r'[a-záéíóúñü]{3,}', text.lower())
+    normalized = normalize_query_text(text)
+    words = re.findall(r'[a-záéíóúñü]{3,}', normalized)
     return {w for w in words if w not in _STOPWORDS}
 
 

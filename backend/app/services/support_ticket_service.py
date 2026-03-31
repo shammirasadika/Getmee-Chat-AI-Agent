@@ -40,6 +40,20 @@ class SupportTicketService:
         print(f"[SupportTicket] Created ticket {ticket['id']} for session {session_key}", flush=True)
         return ticket
 
+    async def create_ticket_direct(self, session_id: str, user_email: str, issue_summary: str) -> dict:
+        """
+        Create a support ticket directly without Redis state management.
+        Used for direct ticket submission via API.
+        """
+        ticket = await self.db.insert_support_ticket(
+            session_id=session_id,
+            issue_summary=issue_summary,
+            message_id=None,
+            user_email=user_email,
+        )
+        print(f"[SupportTicket] Created ticket {ticket['id']} for session {session_id} (direct submission)", flush=True)
+        return ticket
+
     async def handle_try_again(self, session_key: str):
         """
         User chose 'Try Again' after not_satisfied — reset support state,

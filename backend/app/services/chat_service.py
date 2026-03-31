@@ -4,6 +4,9 @@ from app.services.prompt_service import PromptService
 from app.clients.llm_client import LLMClient
 from app.services.session_service import SessionService
 from app.services.message_service import MessageService
+from app.services.support_service import SupportService
+from app.services.support_ticket_service import SupportTicketService
+from app.clients.postgres_client import PostgresClient
 from app.core.config import settings
 from app.models.chat import ChatRequest, ChatResponse
 from app.utils.helpers import clean_context_chunk, is_meaningful_chunk, filter_relevant_chunks, is_language_clean, MIN_PRIMARY_CONFIDENCE
@@ -24,6 +27,10 @@ class ChatService:
         "sure": "Alright! Let me know if you have more questions.",
         "got it": "Great! Let me know if you need anything else.",
     }
+
+    def _extract_email(self, message: str) -> str | None:
+        match = re.search(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", message)
+        return match.group(0) if match else None
 
     def _detect_context_update(self, message: str) -> str:
         msg = message.strip().lower()
@@ -87,6 +94,19 @@ class ChatService:
                 return True
         return False
 
+    def _looks_like_missing_info_answer(self, text: str) -> bool:
+        if not text:
+            return False
+        t = text.strip().lower()
+        patterns = [
+            r"couldn['\u2019]?t find",
+            r"could not find",
+            r"no relevant (answer|information)",
+            r"i (don['\u2019]?t|do not) have (enough )?information",
+            r"unable to find",
+        ]
+        return any(re.search(p, t) for p in patterns)
+
     def _answer_from_session_context(self, message: str, recent_messages: list) -> str:
         msg = message.strip().lower()
         # Simple logic for demo: look for name or last user message
@@ -149,6 +169,9 @@ class ChatService:
         self.llm_client = LLMClient(settings.LLM_PROVIDER, settings.LLM_API_KEY)
         self.session_service = SessionService()
         self.message_service = MessageService()
+        self.support_service = SupportService()
+        self.support_ticket_service = SupportTicketService()
+        self.db = PostgresClient(settings.POSTGRES_URL)
 
     def _extract_meaningful_chunks(self, retrieved: dict, query: str, label: str, is_cross_language: bool = False) -> tuple:
         """Extract, clean, validate, and relevance-filter chunks from retrieval results.
@@ -207,6 +230,69 @@ class ChatService:
         session_key = request.session_id  # frontend sends this as session_key
         session = await self.session_service.get_or_create_session(session_key, request.language)
         session_uuid = session["id"]  # PG UUID
+
+        email = self._extract_email(request.message)
+        if email:
+            print(f"[Chat] Extracted email: {email}", flush=True)
+            language = request.language or self.language_service.detect_language(request.message)
+            support_ack = "Thanks! We've received your email. Our support team will contact you shortly."
+
+            await self.message_service.redis_session.update_context(session_key, user_email=email)
+            await self.db.update_session_email(session_uuid, email)
+
+            user_msg = await self.message_service.save_user_message(
+                session_id=session_uuid, session_key=session_key,
+                text=request.message, language=language,
+            )
+
+            try:
+                history = await self.session_service.get_history(request.session_id)
+            except Exception:
+                history = None
+
+            chat_summary = None
+            fallback_message = None
+            if history:
+                recent = history[-5:]
+                chat_summary = "\n".join(
+                    f"User: {turn.get('user', '')}\nBot: {turn.get('bot', '')}" for turn in recent
+                )
+                fallback_message = history[-1].get("bot") if history else None
+
+            await self.support_service.handle_fallback_escalation(
+                session_id=request.session_id,
+                user_message=request.message,
+                user_email=email,
+                language=language,
+                fallback_message=fallback_message,
+                chat_summary=chat_summary,
+                source="chat_email_capture",
+            )
+
+            await self.support_ticket_service.create_ticket_direct(
+                session_id=session_uuid,
+                user_email=email,
+                issue_summary=request.message,
+            )
+
+            bot_msg = await self.message_service.save_bot_message(
+                session_id=session_uuid, session_key=session_key,
+                text=support_ack, language=language,
+                fallback_used=False, source_type="support",
+            )
+            await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": support_ack})
+
+            return ChatResponse(
+                answer=support_ack,
+                language=language,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=language,
+                message_id=str(bot_msg["id"]),
+                session_uuid=str(session_uuid),
+                show_feedback=True,
+            )
 
 
         # 1. Question intent detection (takes priority)
@@ -394,6 +480,31 @@ class ChatService:
         # 6. Generate answer — always in user's language
         print(f"[Chat] Step 6: Generating answer in '{lang_name}' (retrieval was '{retrieval_language}')", flush=True)
         answer = await self.llm_client.generate(prompt, language=lang_name)
+
+        # 6b. Guard: if context exists and is strong (distance < 1.5) but model still produced
+        # missing-info text, retry once with a forced grounded prompt.
+        # Skip retry for marginal/weak matches to avoid hallucination risk.
+        FORCE_RETRY_DISTANCE_THRESHOLD = 1.5
+        if (
+            relevant_chunks
+            and primary_distance < FORCE_RETRY_DISTANCE_THRESHOLD
+            and self._looks_like_missing_info_answer(answer)
+        ):
+            print(
+                f"[Chat] Step 6b: Detected fallback-like answer despite relevant context "
+                f"(distance={primary_distance:.3f}) — retrying with forced grounded prompt",
+                flush=True
+            )
+            retry_prompt = self.prompt_service.build_force_answer_prompt(request.message, [relevant_chunks], language)
+            answer = await self.llm_client.generate(retry_prompt, language=lang_name)
+        elif relevant_chunks and self._looks_like_missing_info_answer(answer):
+            print(
+                f"[Chat] Step 6b: Fallback-like answer but distance={primary_distance:.3f} >= {FORCE_RETRY_DISTANCE_THRESHOLD} "
+                f"— treating as genuine no-info (skip retry to avoid hallucination)",
+                flush=True
+            )
+            answer = self.language_service.get_fallback_message(language)
+            fallback_used = True
 
         # 7. Validate language
         if not is_language_clean(answer, language):
