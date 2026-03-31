@@ -84,5 +84,3 @@ node_modules/
 *.swp
 *.tmp
 
-# Vite cache and dependency files
-frontend/.vite/
