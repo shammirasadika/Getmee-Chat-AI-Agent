@@ -73,7 +73,7 @@ TOPIC_FALLBACK_PROMPT = (
 # System prompt for translation
 TRANSLATION_SYSTEM_PROMPT = (
     "You are a translator. Translate the following text to {target_language}. "
-    "Return ONLY the translated text, nothing else."
+    "Return ONLY the translated text, nothing else. If the text is already in {target_language}, return it as-is with no explanation."
 )
 
 # System prompt for language validation/rewrite
