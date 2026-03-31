@@ -42,6 +42,10 @@ migrations/__pycache__/
 *.swp
 *.tmp
 
+# Binary and compiled Python files
+*.bin
+*.cpython-*.pyc
+
 # Coverage
 htmlcov/
 .coverage
