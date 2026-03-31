@@ -12,7 +12,10 @@ import re
 
 
 class ChatService:
+    BOT_NAME = "Getmee Chatbot"
+
     SMALL_TALK_KEYWORDS = {
+        # English
         "thanks": "You’re welcome! Let me know if you need anything else.",
         "thank you": "You’re welcome! Let me know if you need anything else.",
         "ok": "Alright. Let me know if you need help with anything else.",
@@ -23,6 +26,18 @@ class ChatService:
         "goodbye": "Goodbye! Feel free to come back anytime.",
         "sure": "Alright! Let me know if you have more questions.",
         "got it": "Great! Let me know if you need anything else.",
+        # Spanish
+        "gracias": "¡De nada! Avísame si necesitas algo más.",
+        "muchas gracias": "¡De nada! Avísame si necesitas algo más.",
+        "vale": "De acuerdo. Avísame si necesitas ayuda con algo más.",
+        "de acuerdo": "De acuerdo. Avísame si necesitas ayuda con algo más.",
+        "hola": "¡Hola! ¿En qué puedo ayudarte hoy?",
+        "buenas": "¡Hola! ¿En qué puedo ayudarte hoy?",
+        "adiós": "¡Adiós! No dudes en volver cuando quieras.",
+        "adios": "¡Adiós! No dudes en volver cuando quieras.",
+        "hasta luego": "¡Hasta luego! No dudes en volver cuando quieras.",
+        "seguro": "¡De acuerdo! Avísame si tienes más preguntas.",
+        "entendido": "¡Genial! Avísame si necesitas algo más.",
     }
 
     def _detect_context_update(self, message: str) -> str:
@@ -45,8 +60,9 @@ class ChatService:
 
     def _detect_low_intent(self, message: str) -> str:
         msg = message.strip().lower()
-        # Regex patterns for flexible matching
+        # Regex patterns for flexible matching (English and Spanish)
         patterns = [
+            # English
             r"^h+m+$",           # hm, hmm, hmmm, etc.
             r"^o+k+a*y*\.*$",   # ok, okay, ok..., okay...
             r"^t+h+a+n+k+s*\.*$", # thanks, thanksss, thanks...
@@ -56,8 +72,21 @@ class ChatService:
             r"^b+y+e+\.*$",      # bye, byee, bye...
             r"^s+u+r+e+\.*$",    # sure, sureee, sure...
             r"^g+o+t+\s*i+t+\.*$", # got it, got it...
+            # Spanish
+            r"^m+$",              # mmm, mmmm, etc.
+            r"^g+r+a+c+i+a+s*\.*$", # gracias, graciasss, gracias...
+            r"^m+u+c+h+a+s*\s*g+r+a+c+i+a+s*\.*$", # muchas gracias...
+            r"^h+o+l+a+\.*$",    # hola, holaa, hola...
+            r"^b+u+e+n+a+s+\.*$", # buenas, buenasss, etc.
+            r"^a+d+i+o+s+\.*$",  # adios, adiosss, adiós...
+            r"^h+a+s+t+a+\s+l+u+e+g+o+\.*$", # hasta luego...
+            r"^v+a+l+e+\.*$",    # vale, valeee, etc.
+            r"^d+e+\s+a+c+u+e+r+d+o+\.*$", # de acuerdo...
+            r"^s+e+g+u+r+o+\.*$", # seguro, segurooo, etc.
+            r"^e+n+t+e+n+d+i+d+o+\.*$", # entendido, entendidooo, etc.
         ]
         responses = [
+            # English
             "Let me know if you need help with anything.",
             "Alright. Let me know if you need help with anything else.",
             "You’re welcome! Let me know if you need anything else.",
@@ -67,6 +96,18 @@ class ChatService:
             "Goodbye! Feel free to come back anytime.",
             "Alright! Let me know if you have more questions.",
             "Great! Let me know if you need anything else.",
+            # Spanish
+            "Avísame si necesitas ayuda con algo.",
+            "¡De nada! Avísame si necesitas algo más.",
+            "¡De nada! Avísame si necesitas algo más.",
+            "¡Hola! ¿En qué puedo ayudarte hoy?",
+            "¡Hola! ¿En qué puedo ayudarte hoy?",
+            "¡Adiós! No dudes en volver cuando quieras.",
+            "¡Hasta luego! No dudes en volver cuando quieras.",
+            "De acuerdo. Avísame si necesitas ayuda con algo más.",
+            "De acuerdo. Avísame si necesitas ayuda con algo más.",
+            "¡De acuerdo! Avísame si tienes más preguntas.",
+            "¡Genial! Avísame si necesitas algo más.",
         ]
         for pat, resp in zip(patterns, responses):
             if re.match(pat, msg):
@@ -75,10 +116,28 @@ class ChatService:
 
     def _detect_question_intent(self, message: str) -> bool:
         msg = message.strip().lower()
+        # Custom: Answer bot name
+        if any(
+            phrase in msg
+            for phrase in [
+                "what is your name",
+                "who are you",
+                "your name",
+                "cómo te llamas",
+                "cual es tu nombre",
+                "quién eres"
+            ]
+        ):
+            # English or Spanish response based on detected language
+            if "cómo" in msg or "cual" in msg or "quién" in msg or "nombre" in msg:
+                return f"Me llamo {self.BOT_NAME}."
+            return f"My name is {self.BOT_NAME}."
+
         if '?' in msg:
             return True
         question_starts = (
-            'how', 'what', 'why', 'when', 'where', 'can', 'do', 'is', 'are', 'does', 'could', 'would', 'should', 'will', 'did', 'who', 'whom', 'whose', 'which', 'may', 'shall'
+            'how', 'what', 'why', 'when', 'where', 'can', 'do', 'is', 'are', 'does', 'could', 'would', 'should', 'will', 'did', 'who', 'whom', 'whose', 'which', 'may', 'shall',
+            'cómo', 'qué', 'por qué', 'cuándo', 'dónde', 'puede', 'hace', 'es', 'son', 'podría', 'haría', 'debería', 'será', 'hizo', 'quién', 'cuyo', 'cuál', 'puede', 'debe'
         )
         # Check if message starts with a question word (allow leading punctuation/whitespace)
         msg_start = msg.lstrip(' .,!')
