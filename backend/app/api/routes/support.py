@@ -38,9 +38,21 @@ async def submit_support_request(request: SupportSubmitRequest):
             chat_summary=chat_summary,
             source=request.source or "rag_fallback",
         )
+        # Multilingual support: use STATIC_RESPONSES for success message
+        from app.services.chat_service import STATIC_RESPONSES
+        lang = (request.language or 'en').lower()
+        if lang not in STATIC_RESPONSES:
+            lang = 'en'
+        # Use the Spanish or English equivalent of the success message
+        support_success_msg = {
+            'en': "Thank you! A team member will contact you soon.",
+            'es': "¡Gracias! Un miembro del equipo te contactará pronto."
+        }
+        message = STATIC_RESPONSES[lang].get('email_success') \
+            if 'email_success' in STATIC_RESPONSES[lang] else support_success_msg[lang]
         return SupportSubmitResponse(
             success=True,
-            message="Your enquiry has been submitted. A team member will contact you soon.",
+            message=message,
             request_id=result.get("request_id"),
         )
     except Exception as e:

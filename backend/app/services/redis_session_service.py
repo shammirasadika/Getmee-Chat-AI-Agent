@@ -20,8 +20,8 @@ try:
 except ImportError:
     REDIS_AVAILABLE = False
 
-# Default TTL for session keys: 24 hours
-DEFAULT_TTL = 86400
+# Default TTL for session keys: 30 minutes
+DEFAULT_TTL = 1800
 # Max recent messages kept in the messages list
 MAX_RECENT_MESSAGES = 20
 
@@ -120,12 +120,11 @@ class RedisSessionService:
         payload = json.dumps(message)
         if self.client:
             await self.client.rpush(key, payload)
-            await self.client.ltrim(key, -MAX_RECENT_MESSAGES, -1)
             await self.client.expire(key, self.ttl)
         else:
             lst = self.memory.setdefault(key, [])
             lst.append(payload)
-            self.memory[key] = lst[-MAX_RECENT_MESSAGES:]
+            self.memory[key] = lst
 
     async def get_messages(self, session_key: str) -> List[dict]:
         """Return recent messages for context window."""
