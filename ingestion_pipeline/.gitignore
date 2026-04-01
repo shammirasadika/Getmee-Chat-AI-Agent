@@ -1,6 +1,5 @@
-# ChromaDB and vector DB
+# ChromaDB / vector DB
 chroma/
-*.bin
 *.parquet
 # Python
 __pycache__/
