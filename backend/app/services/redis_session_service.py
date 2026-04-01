@@ -140,7 +140,7 @@ class RedisSessionService:
         else:
             lst = self.memory.setdefault(key, [])
             lst.append(payload)
-            self.memory[key] = lst[-MAX_RECENT_MESSAGES:]
+            self.memory[key] = lst
 
     async def get_messages(self, session_key: str) -> List[dict]:
         """Return recent messages for context window."""

@@ -46,6 +46,10 @@ const translations = {
     errorMsg: "Sorry, something went wrong. Please try again.",
     emailSuccess: "Thank you! A team member will contact you soon.",
     emailError: "Failed to submit your request. Please try again.",
+    optional_comment: "Optional comment",
+    satisfied: "Satisfied",
+    not_satisfied: "Not Satisfied",
+    was_this_helpful: "Was this helpful?",
   },
   es: {
     title: "Asistente IA GetMee",
@@ -78,6 +82,10 @@ const translations = {
     errorMsg: "Lo sentimos, algo salió mal. Inténtalo de nuevo.",
     emailSuccess: "¡Gracias! Un miembro del equipo te contactará pronto.",
     emailError: "No se pudo enviar tu solicitud. Inténtalo de nuevo.",
+    optional_comment: "Comentario opcional",
+    satisfied: "Satisfecho",
+    not_satisfied: "No satisfecho",
+    was_this_helpful: "¿Fue útil?",
   },
 };
 
@@ -159,7 +167,7 @@ const ChatWidget = () => {
       setSessionComment("");
       setMessages((prev) => [
         ...prev,
-        { text: "Thank you for your feedback!", isUser: false, time: getTime() },
+        { text: i.feedback_thank_you || (lang === 'es' ? '¡Gracias por tus comentarios!' : 'Thank you for your feedback!'), isUser: false, time: getTime() },
       ]);
     } catch (err) {
       console.error("Session rating error:", err);
@@ -411,7 +419,7 @@ const ChatWidget = () => {
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                 <span className="text-yellow-400 text-xl">★</span>
               </div>
-              <span>Rate your overall session</span>
+              <span>{i.feedback_prompt || (lang === 'es' ? 'Por favor califica tu experiencia.' : 'Please rate your experience.')}</span>
             </div>
             <div className="flex gap-1 mb-2 justify-center">
               {[1,2,3,4,5].map((star) => (
@@ -433,7 +441,7 @@ const ChatWidget = () => {
             <textarea
               className="w-full border rounded p-2 mb-2 text-sm"
               rows={2}
-              placeholder="Optional comment"
+              placeholder={i.optional_comment || (lang === 'es' ? 'Comentario opcional' : 'Optional comment')}
               value={sessionComment}
               onChange={e => setSessionComment(e.target.value)}
             />
@@ -443,13 +451,13 @@ const ChatWidget = () => {
                 onClick={submitSessionRating}
                 disabled={sessionRating < 1 || sessionRating > 5 || inFlightSessionRatingRef.current}
               >
-                Submit
+                {i.submit || (lang === 'es' ? 'Enviar' : 'Submit')}
               </button>
               <button
                 className="px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-background rounded-xl transition-all border border-transparent hover:border-border"
                 onClick={() => setShowSessionRating(false)}
               >
-                Cancel
+                {i.cancel || (lang === 'es' ? 'Cancelar' : 'Cancel')}
               </button>
             </div>
           </div>
@@ -667,20 +675,20 @@ const ChatWidget = () => {
                         <span className={`text-xs font-semibold ${
                           feedbackMap[msg.messageId] === "positive" ? "text-primary" : "text-destructive"
                         }`}>
-                          {feedbackMap[msg.messageId] === "positive" ? "Satisfied" : "Not Satisfied"}
+                          {feedbackMap[msg.messageId] === "positive" ? i.satisfied || (lang === 'es' ? 'Satisfecho' : 'Satisfied') : i.not_satisfied || (lang === 'es' ? 'No satisfecho' : 'Not Satisfied')}
                         </span>
-                        <span className="text-xs text-muted-foreground">— Thank you!</span>
+                        <span className="text-xs text-muted-foreground">— {i.feedback_thank_you || (lang === 'es' ? '¡Gracias por tus comentarios!' : 'Thank you!')}</span>
                       </div>
                     ) : (
                       <>
-                        <span className="text-[11px] text-muted-foreground/60 mr-0.5">Was this helpful?</span>
+                        <span className="text-[11px] text-muted-foreground/60 mr-0.5">{i.was_this_helpful || (lang === 'es' ? '¿Fue útil?' : 'Was this helpful?')}</span>
                         <button
                           onClick={() => handleFeedback(msg.messageId!, "positive")}
                           disabled={inFlightFeedbackRef.current.has(msg.messageId!)}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary/5 text-primary border border-primary/20 hover:bg-primary/15 hover:border-primary/40 hover:shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <SmilePlus size={15} />
-                          Satisfied
+                          {i.satisfied || (lang === 'es' ? 'Satisfecho' : 'Satisfied')}
                         </button>
                         <button
                           onClick={() => handleFeedback(msg.messageId!, "negative")}
@@ -688,7 +696,7 @@ const ChatWidget = () => {
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive/5 text-destructive border border-destructive/20 hover:bg-destructive/15 hover:border-destructive/40 hover:shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Frown size={15} />
-                          Not Satisfied
+                          {i.not_satisfied || (lang === 'es' ? 'No satisfecho' : 'Not Satisfied')}
                         </button>
                       </>
                     )}

@@ -1,3 +1,37 @@
+STATIC_RESPONSES = {
+    'en': {
+        'bot_name': "My name is {bot_name}.",
+        'nice_to_meet_you': "Nice to meet you!",
+        'you_are_welcome': "You're welcome! Let me know if you need anything else.",
+        'fallback': "I couldn’t find a relevant answer to your question.",
+        'no_name': "I don’t have your name yet.",
+        'your_name_is': "Your name is {name}.",
+        'language_chosen': "You chose {language}.",
+        'no_language': "I don’t know your chosen language yet.",
+        'support_escalation': "Your query can be sent to our support team. Please provide your email so a team member can contact you.",
+        # Feedback-related
+        'feedback_thank_you': "Thank you for your feedback!",
+        'feedback_prompt': "Please rate your experience.",
+        'submit': "Submit",
+        'cancel': "Cancel",
+    },
+    'es': {
+        'bot_name': "Me llamo {bot_name}.",
+        'nice_to_meet_you': "¡Mucho gusto!",
+        'you_are_welcome': "De nada. Avísame si necesitas algo más.",
+        'fallback': "No pude encontrar una respuesta relevante a tu pregunta.",
+        'no_name': "No tengo tu nombre todavía.",
+        'your_name_is': "Tu nombre es {name}.",
+        'language_chosen': "Elegiste {language}.",
+        'no_language': "Todavía no sé qué idioma elegiste.",
+        'support_escalation': "Tu consulta puede ser enviada a nuestro equipo de soporte. Por favor, proporciona tu correo electrónico para que un miembro del equipo pueda contactarte.",
+        # Feedback-related
+        'feedback_thank_you': "¡Gracias por tus comentarios!",
+        'feedback_prompt': "Por favor califica tu experiencia.",
+        'submit': "Enviar",
+        'cancel': "Cancelar",
+    }
+}
 from app.services.language_service import LanguageService
 from app.services.retrieval_service import RetrievalService
 from app.services.prompt_service import PromptService
@@ -12,7 +46,10 @@ import re
 
 
 class ChatService:
+    BOT_NAME = "Getmee Chatbot"
+
     SMALL_TALK_KEYWORDS = {
+        # English
         "thanks": "You’re welcome! Let me know if you need anything else.",
         "thank you": "You’re welcome! Let me know if you need anything else.",
         "ok": "Alright. Let me know if you need help with anything else.",
@@ -23,76 +60,36 @@ class ChatService:
         "goodbye": "Goodbye! Feel free to come back anytime.",
         "sure": "Alright! Let me know if you have more questions.",
         "got it": "Great! Let me know if you need anything else.",
+        # Spanish
+        "gracias": "¡De nada! Avísame si necesitas algo más.",
+        "muchas gracias": "¡De nada! Avísame si necesitas algo más.",
+        "vale": "De acuerdo. Avísame si necesitas ayuda con algo más.",
+        "de acuerdo": "De acuerdo. Avísame si necesitas ayuda con algo más.",
+        "hola": "¡Hola! ¿En qué puedo ayudarte hoy?",
+        "buenas": "¡Hola! ¿En qué puedo ayudarte hoy?",
+        "adiós": "¡Adiós! No dudes en volver cuando quieras.",
+        "adios": "¡Adiós! No dudes en volver cuando quieras.",
+        "hasta luego": "¡Hasta luego! No dudes en volver cuando quieras.",
+        "seguro": "¡De acuerdo! Avísame si tienes más preguntas.",
+        "entendido": "¡Genial! Avísame si necesitas algo más.",
     }
 
-    _INTRO_PATTERNS = [
-        r"^(?:i\s*am|i'?m)\s+(?P<name>[a-z][a-z\-']{1,30})[\.!]*$",
-        r"^my\s+name(?:\s+is)?\s+(?P<name>[a-z][a-z\-']{1,30})[\.!]*$",
-        r"^this\s+is\s+(?P<name>[a-z][a-z\-']{1,30})[\.!]*$",
-        r"^it'?s\s+(?P<name>[a-z][a-z\-']{1,30})[\.!]*$",
-        r"^(?P<name>[a-z][a-z\-']{1,30})\s+here[\.!]*$",
-    ]
-
-    def normalize_text(self, message: str) -> str:
-        """Normalize informal self-introductions to: 'my name is <name>'."""
-        if not message:
-            return ""
-
-        normalized = message.strip().lower()
-        normalized = normalized.replace("\u2019", "'")
-        normalized = re.sub(r"\s+", " ", normalized)
-
-        # Remove common greeting prefix: "hey im ...", "hello this is ..."
-        normalized = re.sub(r"^(?:hey|hi|hello)\s+", "", normalized)
-
-        for pattern in self._INTRO_PATTERNS:
-            match = re.match(pattern, normalized)
+    def _detect_context_update(self, message: str) -> str:
+        """
+        Extracts the user's name from the message if present.
+        Supports 'my name is ...', 'i am ...', and "i'm ..." patterns anywhere in the message.
+        Returns the first matched name, or None if not found.
+        """
+        patterns = [
+            r"\bmy name is\s+([A-Za-z'-]+)",
+            r"\bi am\s+([A-Za-z'-]+)",
+            r"\bi'm\s+([A-Za-z'-]+)"
+        ]
+        for pat in patterns:
+            match = re.search(pat, message, re.IGNORECASE)
             if match:
-                name = match.group("name")
-                # Keep only letters/hyphen/apostrophe in extracted name.
-                name = re.sub(r"[^a-z\-']", "", name)
-                if name:
-                    return f"my name is {name}"
-
-        return message.strip()
-
-    def _detect_context_update(self, message: str) -> str | None:
-        msg = message.strip().lower()
-        # Detect name update: "my name is ..." or "i am ..."
-        raw_name: str | None = None
-        if msg.startswith("my name is "):
-            raw_name = message[11:].strip().split()[0]
-        elif msg.startswith("i am "):
-            raw_name = message[5:].strip().split()[0]
-        if raw_name:
-            # Strip trailing punctuation (e.g. "Fatema." → "Fatema")
-            raw_name = re.sub(r'[^\w]', '', raw_name)
-            return raw_name.capitalize() if raw_name else None
-        return None
-
-    _IDENTITY_PATTERNS = [
-        r"\bwho\s+are\s+you\b",
-        r"\bwhat\s+are\s+you\b",
-        r"\btell\s+me\s+about\s+yourself\b",
-        r"\bintroduce\s+yourself\b",
-        r"\bwhat\s+is\s+your\s+name\b",
-        r"\bwhat('s| is)\s+getmee\b",
-        r"\bare\s+you\s+(a\s+)?bot\b",
-        r"\bare\s+you\s+(a\s+)?ai\b",
-        r"\bare\s+you\s+(a\s+)?robot\b",
-        r"\bare\s+you\s+human\b",
-    ]
-    _IDENTITY_RESPONSE = (
-        "Hello! I'm GetMee AI Assistant. "
-        "I'm here to help you with your questions about the GetMee platform. "
-        "Feel free to ask me anything!"
-    )
-
-    def _detect_identity_question(self, message: str) -> str | None:
-        msg = message.strip().lower()
-        for pattern in self._IDENTITY_PATTERNS:
-            if re.search(pattern, msg):
-                return self._IDENTITY_RESPONSE
+                name = match.group(1)
+                return name
         return None
 
     # Phrases that mean "yes, continue / do what you suggested"
@@ -126,8 +123,9 @@ class ChatService:
 
     def _detect_low_intent(self, message: str) -> str:
         msg = message.strip().lower()
-        # Regex patterns for flexible matching
+        # Regex patterns for flexible matching (English and Spanish)
         patterns = [
+            # English
             r"^h+m+$",           # hm, hmm, hmmm, etc.
             r"^o+k+a*y*\.*$",   # ok, okay, ok..., okay...
             r"^t+h+a+n+k+s*\.*$", # thanks, thanksss, thanks...
@@ -137,8 +135,21 @@ class ChatService:
             r"^b+y+e+\.*$",      # bye, byee, bye...
             r"^s+u+r+e+\.*$",    # sure, sureee, sure...
             r"^g+o+t+\s*i+t+\.*$", # got it, got it...
+            # Spanish
+            r"^m+$",              # mmm, mmmm, etc.
+            r"^g+r+a+c+i+a+s*\.*$", # gracias, graciasss, gracias...
+            r"^m+u+c+h+a+s*\s*g+r+a+c+i+a+s*\.*$", # muchas gracias...
+            r"^h+o+l+a+\.*$",    # hola, holaa, hola...
+            r"^b+u+e+n+a+s+\.*$", # buenas, buenasss, etc.
+            r"^a+d+i+o+s+\.*$",  # adios, adiosss, adiós...
+            r"^h+a+s+t+a+\s+l+u+e+g+o+\.*$", # hasta luego...
+            r"^v+a+l+e+\.*$",    # vale, valeee, etc.
+            r"^d+e+\s+a+c+u+e+r+d+o+\.*$", # de acuerdo...
+            r"^s+e+g+u+r+o+\.*$", # seguro, segurooo, etc.
+            r"^e+n+t+e+n+d+i+d+o+\.*$", # entendido, entendidooo, etc.
         ]
         responses = [
+            # English
             "Let me know if you need help with anything.",
             "Alright. Let me know if you need help with anything else.",
             "You’re welcome! Let me know if you need anything else.",
@@ -148,6 +159,18 @@ class ChatService:
             "Goodbye! Feel free to come back anytime.",
             "Alright! Let me know if you have more questions.",
             "Great! Let me know if you need anything else.",
+            # Spanish
+            "Avísame si necesitas ayuda con algo.",
+            "¡De nada! Avísame si necesitas algo más.",
+            "¡De nada! Avísame si necesitas algo más.",
+            "¡Hola! ¿En qué puedo ayudarte hoy?",
+            "¡Hola! ¿En qué puedo ayudarte hoy?",
+            "¡Adiós! No dudes en volver cuando quieras.",
+            "¡Hasta luego! No dudes en volver cuando quieras.",
+            "De acuerdo. Avísame si necesitas ayuda con algo más.",
+            "De acuerdo. Avísame si necesitas ayuda con algo más.",
+            "¡De acuerdo! Avísame si tienes más preguntas.",
+            "¡Genial! Avísame si necesitas algo más.",
         ]
         for pat, resp in zip(patterns, responses):
             if re.match(pat, msg):
@@ -156,10 +179,29 @@ class ChatService:
 
     def _detect_question_intent(self, message: str) -> bool:
         msg = message.strip().lower()
+        # Custom: Answer bot name
+        if any(
+            phrase in msg
+            for phrase in [
+                "what is your name",
+                "who are you",
+                "your name",
+                "cómo te llamas",
+                "cual es tu nombre",
+                "quién eres"
+            ]
+        ):
+            # Always respond in the selected language (default English)
+            lang = self.selected_language if hasattr(self, 'selected_language') and self.selected_language else 'en'
+            if lang == 'es':
+                return f"Me llamo {self.BOT_NAME}."
+            return f"My name is {self.BOT_NAME}."
+
         if '?' in msg:
             return True
         question_starts = (
-            'how', 'what', 'why', 'when', 'where', 'can', 'do', 'is', 'are', 'does', 'could', 'would', 'should', 'will', 'did', 'who', 'whom', 'whose', 'which', 'may', 'shall'
+            'how', 'what', 'why', 'when', 'where', 'can', 'do', 'is', 'are', 'does', 'could', 'would', 'should', 'will', 'did', 'who', 'whom', 'whose', 'which', 'may', 'shall',
+            'cómo', 'qué', 'por qué', 'cuándo', 'dónde', 'puede', 'hace', 'es', 'son', 'podría', 'haría', 'debería', 'será', 'hizo', 'quién', 'cuyo', 'cuál', 'puede', 'debe'
         )
         # Check if message starts with a question word (allow leading punctuation/whitespace)
         msg_start = msg.lstrip(' .,!')
@@ -194,33 +236,27 @@ class ChatService:
             return "I don’t know your chosen language yet."
         return None
 
-    async def _get_session_context_answer(self, msg: str, session_key: str, language: str, session_uuid: str, message: str):
+    async def _get_session_context_answer(self, msg: str, session_key: str, language: str, session_uuid: str, message: str, target_language: str = None):
         # Try to get user_name from Redis context
         if "what is my name" in msg:
             ctx = await self.message_service.redis_session.get_context(session_key)
             user_name = ctx.get("user_name") if ctx else None
+            lang = target_language or language or 'en'
             if user_name:
-                return ChatResponse(
-                    answer=f"Your name is {user_name}.",
-                    language=language,
-                    sources=[],
-                    fallback_used=False,
-                    retrieval_language=language,
-                    message_id=None,
-                    session_uuid=str(session_uuid),
-                    show_feedback=False,
-                )
+                answer = STATIC_RESPONSES[lang]['your_name_is'].format(name=user_name)
             else:
-                return ChatResponse(
-                    answer="I don’t have your name yet.",
-                    language=language,
-                    sources=[],
-                    fallback_used=False,
-                    retrieval_language=language,
-                    message_id=None,
-                    session_uuid=str(session_uuid),
-                    show_feedback=False,
-                )
+                answer = STATIC_RESPONSES[lang]['no_name']
+            return ChatResponse(
+                answer=answer,
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
+        # ...existing code...
         return None
 
     def __init__(self):
@@ -283,37 +319,82 @@ class ChatService:
         return retrieved, relevant, best_distance, max_overlap
 
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
-        normalized_message = self.normalize_text(request.message)
-        if normalized_message and normalized_message != request.message:
-            print(f"[Chat] Normalized user text: '{request.message}' -> '{normalized_message}'", flush=True)
-            request = request.model_copy(update={"message": normalized_message})
+        # Always set the selected language for this request
+        self.selected_language = request.language or 'en'
+        print(f"[Chat] Incoming request.language: {request.language}", flush=True)
 
         # 0. Ensure session exists in PG + Redis
         session_key = request.session_id  # frontend sends this as session_key
         session = await self.session_service.get_or_create_session(session_key, request.language)
         session_uuid = session["id"]  # PG UUID
 
-        # 0b. Identity question detection — always takes priority before RAG
-        identity_resp = self._detect_identity_question(request.message)
-        if identity_resp:
-            language = request.language or self.language_service.detect_language(request.message)
+        # 1. Question intent detection (takes priority)
+        # Multi-intent/context: always update context if 'my name is ...' is present
+        name_update = self._detect_context_update(request.message)
+        if name_update:
+            await self.message_service.redis_session.update_context(session_key, user_name=name_update)
+        # Check for both bot name and user name questions in the same message
+        msg_lower = request.message.strip().lower()
+        lang = request.language or 'en'
+        responses = []
+        # Bot name intent
+        bot_name_intent = any(
+            phrase in msg_lower
+            for phrase in [
+                "what is your name",
+                "who are you",
+                "your name",
+                "cómo te llamas",
+                "cual es tu nombre",
+                "quién eres"
+            ]
+        )
+        if bot_name_intent:
+            responses.append(STATIC_RESPONSES[lang]['bot_name'].format(bot_name=self.BOT_NAME))
+        # User name intent
+        user_name_intent = "what is my name" in msg_lower
+        if user_name_intent:
+            ctx = await self.message_service.redis_session.get_context(session_key)
+            user_name = ctx.get("user_name") if ctx else None
+            if user_name:
+                responses.append(STATIC_RESPONSES[lang]['your_name_is'].format(name=user_name))
+            else:
+                responses.append(STATIC_RESPONSES[lang]['no_name'])
+        if responses:
             await self.message_service.save_user_message(
                 session_id=session_uuid, session_key=session_key,
-                text=request.message, language=language,
+                text=request.message, language=lang,
             )
+            print(f"[Chat] Final answer language: {lang}", flush=True)
             return ChatResponse(
-                answer=identity_resp,
-                language=language,
+                answer="\n".join(responses),
+                language=lang,
                 sources=[],
                 fallback_used=False,
-                retrieval_language=language,
+                retrieval_language=lang,
                 message_id=None,
                 session_uuid=str(session_uuid),
                 show_feedback=False,
             )
-
-        # 1. Question intent detection (takes priority)
-        if self._detect_question_intent(request.message):
+        # Fallback to original logic for other cases
+        q_intent = self._detect_question_intent(request.message)
+        if isinstance(q_intent, str):
+            await self.message_service.save_user_message(
+                session_id=session_uuid, session_key=session_key,
+                text=request.message, language=lang,
+            )
+            print(f"[Chat] Final answer language: {lang}", flush=True)
+            return ChatResponse(
+                answer=q_intent,
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
+        elif q_intent:
             # 1a. Context update detection (no RAG, no fallback)
             name_update = self._detect_context_update(request.message)
             if name_update:
@@ -324,12 +405,14 @@ class ChatService:
                     session_id=session_uuid, session_key=session_key,
                     text=request.message, language=language,
                 )
+                lang = request.language or 'en'
+                print(f"[Chat] Final answer language: {lang}", flush=True)
                 return ChatResponse(
-                    answer="Nice to meet you.",
-                    language=language,
+                    answer=STATIC_RESPONSES[lang]['nice_to_meet_you'],
+                    language=lang,
                     sources=[],
                     fallback_used=False,
-                    retrieval_language=language,
+                    retrieval_language=lang,
                     message_id=None,
                     session_uuid=str(session_uuid),
                     show_feedback=False,
@@ -342,72 +425,54 @@ class ChatService:
                 pass
             msg = request.message.strip().lower()
             language = request.language or self.language_service.detect_language(request.message)
-            session_context_answer = await self._get_session_context_answer(msg, session_key, language, session_uuid, request.message)
+            session_context_answer = await self._get_session_context_answer(msg, session_key, language, session_uuid, request.message, target_language=request.language)
             if session_context_answer:
                 await self.message_service.save_user_message(
                     session_id=session_uuid, session_key=session_key,
                     text=request.message, language=language,
                 )
+                print(f"[Chat] Final answer language: {language}", flush=True)
                 return session_context_answer
         else:
-            # 2a. Confirmation detection — must run BEFORE small-talk so "ok"/"yes"/"sure"
-            # continues the previous topic instead of being swallowed as small-talk.
-            if self._detect_confirmation(request.message):
-                language = request.language or self.language_service.detect_language(request.message)
-                ctx = await self.message_service.redis_session.get_context(session_key)
-                last_topic = ctx.get("last_topic") if ctx else None
-                if last_topic:
-                    print(f"[Chat] Confirmation detected — re-routing with last_topic: '{last_topic[:80]}'", flush=True)
-                    # Replace message with the previous topic and fall through to RAG
-                    request = request.model_copy(update={"message": last_topic})
-                else:
-                    # No saved topic yet — ask user to clarify
-                    await self.message_service.save_user_message(
-                        session_id=session_uuid, session_key=session_key,
-                        text=request.message, language=language,
-                    )
-                    return ChatResponse(
-                        answer="Sure! Could you please tell me more about what you need help with?",
-                        language=language,
-                        sources=[],
-                        fallback_used=False,
-                        retrieval_language=language,
-                        message_id=None,
-                        session_uuid=str(session_uuid),
-                        show_feedback=False,
-                    )
-            else:
-                # 2b. Small-talk / low-intent (only when NOT a confirmation)
-                small_talk_resp = self._detect_small_talk(request.message) or self._detect_low_intent(request.message)
-                if small_talk_resp:
-                    language = request.language or self.language_service.detect_language(request.message)
-                    await self.message_service.save_user_message(
-                        session_id=session_uuid, session_key=session_key,
-                        text=request.message, language=language,
-                    )
-                    return ChatResponse(
-                        answer=small_talk_resp,
-                        language=language,
-                        sources=[],
-                        fallback_used=False,
-                        retrieval_language=language,
-                        message_id=None,
-                        session_uuid=str(session_uuid),
-                        show_feedback=False,
-                    )
+            # 2. Small-talk/low-intent detection (only if not a question)
+            small_talk_resp = self._detect_small_talk(request.message) or self._detect_low_intent(request.message)
+            if small_talk_resp:
+                # Always translate small talk/greeting to the dropdown-selected language (even if already in that language)
+                answer = small_talk_resp
+                try:
+                    answer = await self.llm_client.translate(answer, target_language=request.language)
+                except Exception as e:
+                    print(f"[Chat] Small talk translation error: {e}", flush=True)
+                await self.message_service.save_user_message(
+                    session_id=session_uuid, session_key=session_key,
+                    text=request.message, language=request.language,
+                )
+                print(f"[Chat] Final answer language: {request.language}", flush=True)
+                return ChatResponse(
+                    answer=answer,
+                    language=request.language,
+                    sources=[],
+                    fallback_used=False,
+                    retrieval_language=request.language,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
 
         # 3. Context update detection (no RAG, no fallback)
         name_update = self._detect_context_update(request.message)
         if name_update:
             language = request.language or self.language_service.detect_language(request.message)
+            answer = STATIC_RESPONSES[language]['nice_to_meet_you']
             # Store name in Redis context (as user_name)
             await self.message_service.redis_session.update_context(session_key, user_name=name_update)
             await self.message_service.save_user_message(
                 session_id=session_uuid, session_key=session_key,
                 text=request.message, language=language,
             )
+            print(f"[Chat] Final answer language: {language}", flush=True)
             return ChatResponse(
-                answer=f"Nice to meet you, {name_update}! How can I help you today?",
+                answer=answer,
                 language=language,
                 sources=[],
                 fallback_used=False,
@@ -493,12 +558,18 @@ class ChatService:
         # 4. If no relevant context in either language — strict fallback (NO LLM generation)
         if not relevant_chunks:
             print(f"[Chat] Step 4: No relevant chunks — returning strict fallback message (LLM skipped)", flush=True)
-            fallback_message = self.language_service.get_fallback_message(language)
+            fallback_message = self.language_service.get_fallback_message(request.language)
+            # If fallback_message is not in the selected language, translate it
+            if request.language != language:
+                try:
+                    fallback_message = await self.llm_client.translate(fallback_message, target_language=request.language)
+                except Exception as e:
+                    print(f"[Chat] Fallback translation error: {e}", flush=True)
 
             # Save bot fallback message to PG + Redis (sets feedback_state)
             bot_msg = await self.message_service.save_bot_message(
                 session_id=session_uuid, session_key=session_key,
-                text=fallback_message, language=language,
+                text=fallback_message, language=request.language,
                 fallback_used=True, source_type="fallback",
             )
             # Legacy turn save
@@ -506,7 +577,7 @@ class ChatService:
 
             return ChatResponse(
                 answer=fallback_message,
-                language=language,
+                language=request.language,
                 sources=[],
                 fallback_used=True,
                 requires_email=True,
@@ -519,21 +590,21 @@ class ChatService:
         sources = [{"text": doc[:200]} for doc in relevant_chunks]
 
         # 5. Build prompt
-        prompt = self.prompt_service.build_prompt(request.message, [relevant_chunks], language)
+        prompt = self.prompt_service.build_prompt(request.message, [relevant_chunks], request.language)
 
-        # 6. Generate answer — always in user's language
-        print(f"[Chat] Step 6: Generating answer in '{lang_name}' (retrieval was '{retrieval_language}')", flush=True)
-        answer = await self.llm_client.generate(prompt, language=lang_name)
+        # 6. Generate answer — always in dropdown-selected language
+        print(f"[Chat] Step 6: Generating answer in '{request.language}' (retrieval was '{retrieval_language}')", flush=True)
+        answer = await self.llm_client.generate(prompt, language=request.language)
 
         # 7. Validate language
-        if not is_language_clean(answer, language):
-            print(f"[Chat] Step 7: Language validation FAILED for '{language}' — rewriting...", flush=True)
-            answer = await self.llm_client.cleanup_language(answer, lang_name)
+        if not is_language_clean(answer, request.language):
+            print(f"[Chat] Step 7: Language validation FAILED for '{request.language}' — rewriting...", flush=True)
+            answer = await self.llm_client.cleanup_language(answer, request.language)
 
         # 8. Save bot message to PG + Redis (sets feedback_state)
         bot_msg = await self.message_service.save_bot_message(
             session_id=session_uuid, session_key=session_key,
-            text=answer, language=language,
+            text=answer, language=request.language,
             fallback_used=fallback_used, source_type="kb",
         )
         # Legacy turn save
@@ -549,7 +620,7 @@ class ChatService:
         print(f"[Chat] DONE — fallback_used={fallback_used}, retrieval_language={retrieval_language}", flush=True)
         return ChatResponse(
             answer=answer,
-            language=language,
+            language=request.language,
             sources=sources,
             fallback_used=fallback_used,
             retrieval_language=retrieval_language,
