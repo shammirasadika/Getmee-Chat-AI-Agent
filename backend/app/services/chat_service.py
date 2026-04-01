@@ -25,16 +25,97 @@ class ChatService:
         "got it": "Great! Let me know if you need anything else.",
     }
 
-    def _detect_context_update(self, message: str) -> str:
+    _INTRO_PATTERNS = [
+        r"^(?:i\s*am|i'?m)\s+(?P<name>[a-z][a-z\-']{1,30})[\.!]*$",
+        r"^my\s+name(?:\s+is)?\s+(?P<name>[a-z][a-z\-']{1,30})[\.!]*$",
+        r"^this\s+is\s+(?P<name>[a-z][a-z\-']{1,30})[\.!]*$",
+        r"^it'?s\s+(?P<name>[a-z][a-z\-']{1,30})[\.!]*$",
+        r"^(?P<name>[a-z][a-z\-']{1,30})\s+here[\.!]*$",
+    ]
+
+    def normalize_text(self, message: str) -> str:
+        """Normalize informal self-introductions to: 'my name is <name>'."""
+        if not message:
+            return ""
+
+        normalized = message.strip().lower()
+        normalized = normalized.replace("\u2019", "'")
+        normalized = re.sub(r"\s+", " ", normalized)
+
+        # Remove common greeting prefix: "hey im ...", "hello this is ..."
+        normalized = re.sub(r"^(?:hey|hi|hello)\s+", "", normalized)
+
+        for pattern in self._INTRO_PATTERNS:
+            match = re.match(pattern, normalized)
+            if match:
+                name = match.group("name")
+                # Keep only letters/hyphen/apostrophe in extracted name.
+                name = re.sub(r"[^a-z\-']", "", name)
+                if name:
+                    return f"my name is {name}"
+
+        return message.strip()
+
+    def _detect_context_update(self, message: str) -> str | None:
         msg = message.strip().lower()
         # Detect name update: "my name is ..." or "i am ..."
+        raw_name: str | None = None
         if msg.startswith("my name is "):
-            name = message[11:].strip().split()[0]
-            return name
-        if msg.startswith("i am "):
-            name = message[5:].strip().split()[0]
-            return name
+            raw_name = message[11:].strip().split()[0]
+        elif msg.startswith("i am "):
+            raw_name = message[5:].strip().split()[0]
+        if raw_name:
+            # Strip trailing punctuation (e.g. "Fatema." → "Fatema")
+            raw_name = re.sub(r'[^\w]', '', raw_name)
+            return raw_name.capitalize() if raw_name else None
         return None
+
+    _IDENTITY_PATTERNS = [
+        r"\bwho\s+are\s+you\b",
+        r"\bwhat\s+are\s+you\b",
+        r"\btell\s+me\s+about\s+yourself\b",
+        r"\bintroduce\s+yourself\b",
+        r"\bwhat\s+is\s+your\s+name\b",
+        r"\bwhat('s| is)\s+getmee\b",
+        r"\bare\s+you\s+(a\s+)?bot\b",
+        r"\bare\s+you\s+(a\s+)?ai\b",
+        r"\bare\s+you\s+(a\s+)?robot\b",
+        r"\bare\s+you\s+human\b",
+    ]
+    _IDENTITY_RESPONSE = (
+        "Hello! I'm GetMee AI Assistant. "
+        "I'm here to help you with your questions about the GetMee platform. "
+        "Feel free to ask me anything!"
+    )
+
+    def _detect_identity_question(self, message: str) -> str | None:
+        msg = message.strip().lower()
+        for pattern in self._IDENTITY_PATTERNS:
+            if re.search(pattern, msg):
+                return self._IDENTITY_RESPONSE
+        return None
+
+    # Phrases that mean "yes, continue / do what you suggested"
+    _CONFIRMATION_PATTERNS = [
+        r"^(ok|okay|ok+)[\.!]*$",
+        r"^(yes|yeah|yep|yup|ya)[\.!]*$",
+        r"^sure[\.!]*$",
+        r"^(go ahead|do it|proceed|continue)[\.!]*$",
+        r"^i (want|want that|want to)[\.!]*$",
+        r"^i'?d like( that)?[\.!]*$",
+        r"^(please|pls)[\.!]*$",
+        r"^(sounds good|great|perfect)[\.!]*$",
+        r"^(do it|let'?s do it)[\.!]*$",
+        r"^i (am |'m )?(interested|ready)[\.!]*$",
+    ]
+
+    def _detect_confirmation(self, message: str) -> bool:
+        """Return True when the message is a short confirmation with no new topic."""
+        msg = message.strip().lower()
+        for pattern in self._CONFIRMATION_PATTERNS:
+            if re.match(pattern, msg):
+                return True
+        return False
 
     def _detect_small_talk(self, message: str) -> str:
         msg = message.strip().lower()
@@ -202,12 +283,34 @@ class ChatService:
         return retrieved, relevant, best_distance, max_overlap
 
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
+        normalized_message = self.normalize_text(request.message)
+        if normalized_message and normalized_message != request.message:
+            print(f"[Chat] Normalized user text: '{request.message}' -> '{normalized_message}'", flush=True)
+            request = request.model_copy(update={"message": normalized_message})
 
         # 0. Ensure session exists in PG + Redis
         session_key = request.session_id  # frontend sends this as session_key
         session = await self.session_service.get_or_create_session(session_key, request.language)
         session_uuid = session["id"]  # PG UUID
 
+        # 0b. Identity question detection — always takes priority before RAG
+        identity_resp = self._detect_identity_question(request.message)
+        if identity_resp:
+            language = request.language or self.language_service.detect_language(request.message)
+            await self.message_service.save_user_message(
+                session_id=session_uuid, session_key=session_key,
+                text=request.message, language=language,
+            )
+            return ChatResponse(
+                answer=identity_resp,
+                language=language,
+                sources=[],
+                fallback_used=False,
+                retrieval_language=language,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
 
         # 1. Question intent detection (takes priority)
         if self._detect_question_intent(request.message):
@@ -247,24 +350,51 @@ class ChatService:
                 )
                 return session_context_answer
         else:
-            # 2. Small-talk/low-intent detection (only if not a question)
-            small_talk_resp = self._detect_small_talk(request.message) or self._detect_low_intent(request.message)
-            if small_talk_resp:
+            # 2a. Confirmation detection — must run BEFORE small-talk so "ok"/"yes"/"sure"
+            # continues the previous topic instead of being swallowed as small-talk.
+            if self._detect_confirmation(request.message):
                 language = request.language or self.language_service.detect_language(request.message)
-                await self.message_service.save_user_message(
-                    session_id=session_uuid, session_key=session_key,
-                    text=request.message, language=language,
-                )
-                return ChatResponse(
-                    answer=small_talk_resp,
-                    language=language,
-                    sources=[],
-                    fallback_used=False,
-                    retrieval_language=language,
-                    message_id=None,
-                    session_uuid=str(session_uuid),
-                    show_feedback=False,
-                )
+                ctx = await self.message_service.redis_session.get_context(session_key)
+                last_topic = ctx.get("last_topic") if ctx else None
+                if last_topic:
+                    print(f"[Chat] Confirmation detected — re-routing with last_topic: '{last_topic[:80]}'", flush=True)
+                    # Replace message with the previous topic and fall through to RAG
+                    request = request.model_copy(update={"message": last_topic})
+                else:
+                    # No saved topic yet — ask user to clarify
+                    await self.message_service.save_user_message(
+                        session_id=session_uuid, session_key=session_key,
+                        text=request.message, language=language,
+                    )
+                    return ChatResponse(
+                        answer="Sure! Could you please tell me more about what you need help with?",
+                        language=language,
+                        sources=[],
+                        fallback_used=False,
+                        retrieval_language=language,
+                        message_id=None,
+                        session_uuid=str(session_uuid),
+                        show_feedback=False,
+                    )
+            else:
+                # 2b. Small-talk / low-intent (only when NOT a confirmation)
+                small_talk_resp = self._detect_small_talk(request.message) or self._detect_low_intent(request.message)
+                if small_talk_resp:
+                    language = request.language or self.language_service.detect_language(request.message)
+                    await self.message_service.save_user_message(
+                        session_id=session_uuid, session_key=session_key,
+                        text=request.message, language=language,
+                    )
+                    return ChatResponse(
+                        answer=small_talk_resp,
+                        language=language,
+                        sources=[],
+                        fallback_used=False,
+                        retrieval_language=language,
+                        message_id=None,
+                        session_uuid=str(session_uuid),
+                        show_feedback=False,
+                    )
 
         # 3. Context update detection (no RAG, no fallback)
         name_update = self._detect_context_update(request.message)
@@ -277,7 +407,7 @@ class ChatService:
                 text=request.message, language=language,
             )
             return ChatResponse(
-                answer="Nice to meet you.",
+                answer=f"Nice to meet you, {name_update}! How can I help you today?",
                 language=language,
                 sources=[],
                 fallback_used=False,
@@ -408,6 +538,13 @@ class ChatService:
         )
         # Legacy turn save
         await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": answer})
+
+        # Store this query as last_topic so follow-up confirmations can re-use it.
+        if not fallback_used:
+            try:
+                await self.message_service.redis_session.update_context(session_key, last_topic=request.message)
+            except Exception:
+                pass
 
         print(f"[Chat] DONE — fallback_used={fallback_used}, retrieval_language={retrieval_language}", flush=True)
         return ChatResponse(

@@ -6,7 +6,7 @@
       ("_botDirectedSupport" in msg || "_source" in msg)
     );
   }
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Mail, Loader2, Globe, RotateCcw, MessageCircle, Sparkles, SmilePlus, Frown, Upload } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import logo from "@/assets/getmee-logo.svg.png";
@@ -115,6 +115,10 @@ const ChatWidget = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(generateSessionId);
 
+  // Track in-flight requests to prevent duplicate submissions
+  const inFlightFeedbackRef = useRef<Set<string>>(new Set());
+  const inFlightSessionRatingRef = useRef<boolean>(false);
+
   // Email collection state (driven by backend requires_email flag)
   const [showEmailInput, setShowEmailInput] = useState(false);
   const [emailAddress, setEmailAddress] = useState("");
@@ -132,9 +136,14 @@ const ChatWidget = () => {
   // Popup priority: defer session rating if email popup is open
   const [pendingSessionRating, setPendingSessionRating] = useState(false);
 
-  // Submit session rating to backend (must be in component scope)
-  const submitSessionRating = async () => {
+  // Submit session rating to backend — with duplicate prevention
+  const submitSessionRating = useCallback(async () => {
     if (sessionRating < 1 || sessionRating > 5) return;
+    if (inFlightSessionRatingRef.current) {
+      console.warn("Session rating submission already in progress");
+      return;
+    }
+    inFlightSessionRatingRef.current = true;
     try {
       await fetch(`${API_BASE}/api/feedback/session`, {
         method: "POST",
@@ -153,6 +162,7 @@ const ChatWidget = () => {
         { text: "Thank you for your feedback!", isUser: false, time: getTime() },
       ]);
     } catch (err) {
+      console.error("Session rating error:", err);
       setShowSessionRating(false);
       setSessionRating(0);
       setSessionComment("");
@@ -160,8 +170,10 @@ const ChatWidget = () => {
         ...prev,
         { text: "Failed to submit session rating. Please try again later.", isUser: false, time: getTime() },
       ]);
+    } finally {
+      inFlightSessionRatingRef.current = false;
     }
-  };
+  }, [sessionRating, sessionComment, sessionId]);
 
   // Feedback state: messageId -> "positive" | "negative" | "sending"
   const [feedbackMap, setFeedbackMap] = useState<Record<string, string>>({});
@@ -330,9 +342,21 @@ const ChatWidget = () => {
   };
 
   /* ---- API: Submit feedback ---- */
-  const handleFeedback = async (messageId: string, feedback: "positive" | "negative") => {
-    if (feedbackMap[messageId]) return; // already submitted
+  const handleFeedback = useCallback(async (messageId: string, feedback: "positive" | "negative") => {
+    // Check if this message is already being processed
+    if (inFlightFeedbackRef.current.has(messageId)) {
+      console.warn(`Feedback for message ${messageId} already in flight`);
+      return;
+    }
+    if (feedbackMap[messageId]) {
+      console.warn(`Feedback for message ${messageId} already submitted`);
+      return;
+    }
+
+    // Mark this request as in-flight
+    inFlightFeedbackRef.current.add(messageId);
     setFeedbackMap((prev) => ({ ...prev, [messageId]: "sending" }));
+
     try {
       // Map frontend feedback to backend expected values
       const backendFeedback = feedback === "positive" ? "satisfied" : "not_satisfied";
@@ -340,7 +364,7 @@ const ChatWidget = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          session_key: sessionId, // backend expects session_key
+          session_key: sessionId,
           message_id: messageId,
           feedback: backendFeedback,
         }),
@@ -350,7 +374,7 @@ const ChatWidget = () => {
       setFeedbackMap((prev) => ({ ...prev, [messageId]: feedback }));
       if (data.show_support_options) {
         setShowEmailInput(true);
-        setLastFallbackMessage(""); // Optionally set context if needed
+        setLastFallbackMessage("");
       }
       if (backendFeedback === "satisfied") {
         if (showEmailInput) {
@@ -366,8 +390,11 @@ const ChatWidget = () => {
         delete updated[messageId];
         return updated;
       });
+    } finally {
+      // Remove from in-flight set
+      inFlightFeedbackRef.current.delete(messageId);
     }
-  };
+  }, [feedbackMap, sessionId, showEmailInput]);
 
   const [showLangDropdown, setShowLangDropdown] = useState(false);
 
@@ -392,10 +419,11 @@ const ChatWidget = () => {
                   key={star}
                   className={
                     star <= sessionRating
-                      ? "text-yellow-400 text-2xl"
-                      : "text-gray-300 text-2xl"
+                      ? "text-yellow-400 text-2xl disabled:opacity-50 disabled:cursor-not-allowed"
+                      : "text-gray-300 text-2xl disabled:opacity-50 disabled:cursor-not-allowed"
                   }
                   onClick={() => setSessionRating(star)}
+                  disabled={inFlightSessionRatingRef.current}
                   aria-label={`Rate ${star}`}
                 >
                   ★
@@ -413,7 +441,7 @@ const ChatWidget = () => {
               <button
                 className="flex-1 bg-primary text-primary-foreground rounded-xl px-4 py-2.5 text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
                 onClick={submitSessionRating}
-                disabled={sessionRating < 1 || sessionRating > 5}
+                disabled={sessionRating < 1 || sessionRating > 5 || inFlightSessionRatingRef.current}
               >
                 Submit
               </button>
@@ -648,14 +676,16 @@ const ChatWidget = () => {
                         <span className="text-[11px] text-muted-foreground/60 mr-0.5">Was this helpful?</span>
                         <button
                           onClick={() => handleFeedback(msg.messageId!, "positive")}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary/5 text-primary border border-primary/20 hover:bg-primary/15 hover:border-primary/40 hover:shadow-sm active:scale-95 transition-all"
+                          disabled={inFlightFeedbackRef.current.has(msg.messageId!)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary/5 text-primary border border-primary/20 hover:bg-primary/15 hover:border-primary/40 hover:shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <SmilePlus size={15} />
                           Satisfied
                         </button>
                         <button
                           onClick={() => handleFeedback(msg.messageId!, "negative")}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive/5 text-destructive border border-destructive/20 hover:bg-destructive/15 hover:border-destructive/40 hover:shadow-sm active:scale-95 transition-all"
+                          disabled={inFlightFeedbackRef.current.has(msg.messageId!)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive/5 text-destructive border border-destructive/20 hover:bg-destructive/15 hover:border-destructive/40 hover:shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Frown size={15} />
                           Not Satisfied
