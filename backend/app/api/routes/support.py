@@ -1,12 +1,18 @@
 from fastapi import APIRouter, HTTPException, Query
 import traceback
+from datetime import datetime, timezone
 from app.services.support_service import SupportService
 from app.services.session_service import SessionService
-from app.models.common import SupportSubmitRequest, SupportSubmitResponse
+from app.services.support_ticket_service import SupportTicketService
+from app.models.common import (
+    SupportSubmitRequest, SupportSubmitResponse,
+    CreateTicketRequest, CreateTicketResponse
+)
 
 router = APIRouter()
 support_service = SupportService()
 session_service = SessionService()
+ticket_service = SupportTicketService()
 
 
 @router.post("/", response_model=SupportSubmitResponse)
@@ -71,4 +77,26 @@ async def list_support_requests(
         requests = await support_service.get_requests(status=status, limit=limit)
         return {"count": len(requests), "requests": requests}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/tickets", response_model=CreateTicketResponse)
+async def create_support_ticket(request: CreateTicketRequest):
+    """Create a support ticket with session_id, email, and issue."""
+    try:
+        ticket = await ticket_service.create_ticket_direct(
+            session_id=request.session_id,
+            user_email=request.email,
+            issue_summary=request.issue,
+        )
+        created_at = ticket.get("created_at", datetime.now(timezone.utc)).isoformat()
+        return CreateTicketResponse(
+            success=True,
+            ticket_id=str(ticket["id"]),
+            created_at=created_at,
+            message="Support ticket created successfully. A team member will contact you.",
+        )
+    except Exception as e:
+        print("[Support API] Exception in create_support_ticket:")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

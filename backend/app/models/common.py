@@ -21,3 +21,14 @@ class SupportSubmitResponse(BaseModel):
     success: bool
     message: str
     request_id: Optional[int] = None
+
+class CreateTicketRequest(BaseModel):
+    session_id: str
+    email: EmailStr
+    issue: str
+
+class CreateTicketResponse(BaseModel):
+    success: bool
+    ticket_id: str
+    created_at: str
+    message: str

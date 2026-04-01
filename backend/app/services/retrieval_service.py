@@ -1,4 +1,5 @@
 from app.clients.chroma_client import ChromaClient
+from app.utils.query_normalizer import build_retrieval_query
 
 # Distance threshold — lower distance = better match in ChromaDB
 # Relaxed to 2.0 to allow partial matches and avoid over-filtering
@@ -9,7 +10,10 @@ class RetrievalService:
         self.chroma = ChromaClient()
 
     async def retrieve(self, query: str, top_k: int = 5):
-        return self.chroma.query(query, top_k=top_k)
+        retrieval_query = build_retrieval_query(query)
+        if retrieval_query != query:
+            print(f"[Retrieval] Normalized query: '{retrieval_query[:120]}'", flush=True)
+        return self.chroma.query(retrieval_query, top_k=top_k)
 
     @staticmethod
     def has_relevant_results(retrieved: dict, threshold: float = DISTANCE_THRESHOLD) -> bool:

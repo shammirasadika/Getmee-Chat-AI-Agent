@@ -38,6 +38,9 @@ from app.services.prompt_service import PromptService
 from app.clients.llm_client import LLMClient
 from app.services.session_service import SessionService
 from app.services.message_service import MessageService
+from app.services.support_service import SupportService
+from app.services.support_ticket_service import SupportTicketService
+from app.clients.postgres_client import PostgresClient
 from app.core.config import settings
 from app.models.chat import ChatRequest, ChatResponse
 from app.utils.helpers import clean_context_chunk, is_meaningful_chunk, filter_relevant_chunks, is_language_clean, MIN_PRIMARY_CONFIDENCE
@@ -210,6 +213,19 @@ class ChatService:
                 return True
         return False
 
+    def _looks_like_missing_info_answer(self, text: str) -> bool:
+        if not text:
+            return False
+        t = text.strip().lower()
+        patterns = [
+            r"couldn['\u2019]?t find",
+            r"could not find",
+            r"no relevant (answer|information)",
+            r"i (don['\u2019]?t|do not) have (enough )?information",
+            r"unable to find",
+        ]
+        return any(re.search(p, t) for p in patterns)
+
     def _answer_from_session_context(self, message: str, recent_messages: list) -> str:
         msg = message.strip().lower()
         # Simple logic for demo: look for name or last user message
@@ -266,6 +282,9 @@ class ChatService:
         self.llm_client = LLMClient(settings.LLM_PROVIDER, settings.LLM_API_KEY)
         self.session_service = SessionService()
         self.message_service = MessageService()
+        self.support_service = SupportService()
+        self.support_ticket_service = SupportTicketService()
+        self.db = PostgresClient(settings.POSTGRES_URL)
 
     def _extract_meaningful_chunks(self, retrieved: dict, query: str, label: str, is_cross_language: bool = False) -> tuple:
         """Extract, clean, validate, and relevance-filter chunks from retrieval results.
@@ -595,6 +614,31 @@ class ChatService:
         # 6. Generate answer — always in dropdown-selected language
         print(f"[Chat] Step 6: Generating answer in '{request.language}' (retrieval was '{retrieval_language}')", flush=True)
         answer = await self.llm_client.generate(prompt, language=request.language)
+
+        # 6b. Guard: if context exists and is strong (distance < 1.5) but model still produced
+        # missing-info text, retry once with a forced grounded prompt.
+        # Skip retry for marginal/weak matches to avoid hallucination risk.
+        FORCE_RETRY_DISTANCE_THRESHOLD = 1.5
+        if (
+            relevant_chunks
+            and primary_distance < FORCE_RETRY_DISTANCE_THRESHOLD
+            and self._looks_like_missing_info_answer(answer)
+        ):
+            print(
+                f"[Chat] Step 6b: Detected fallback-like answer despite relevant context "
+                f"(distance={primary_distance:.3f}) — retrying with forced grounded prompt",
+                flush=True
+            )
+            retry_prompt = self.prompt_service.build_force_answer_prompt(request.message, [relevant_chunks], language)
+            answer = await self.llm_client.generate(retry_prompt, language=lang_name)
+        elif relevant_chunks and self._looks_like_missing_info_answer(answer):
+            print(
+                f"[Chat] Step 6b: Fallback-like answer but distance={primary_distance:.3f} >= {FORCE_RETRY_DISTANCE_THRESHOLD} "
+                f"— treating as genuine no-info (skip retry to avoid hallucination)",
+                flush=True
+            )
+            answer = self.language_service.get_fallback_message(language)
+            fallback_used = True
 
         # 7. Validate language
         if not is_language_clean(answer, request.language):
