@@ -1,3 +1,7 @@
+# ChromaDB and vector DB
+chroma/
+*.bin
+*.parquet
 # Python
 __pycache__/
 *.py[cod]
