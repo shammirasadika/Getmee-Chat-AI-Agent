@@ -13,6 +13,27 @@ session_service = SessionService()
 async def submit_support_request(request: SupportSubmitRequest):
     """Submit a support request after user provides their email."""
     try:
+        # --- Redis-based support state tracking and repeat submission prevention ---
+        redis_session = session_service.redis_session
+        support_state = await redis_session.get_support_state(request.session_id)
+        if support_state and support_state.get("support_request_sent"):
+            # Already submitted, block repeat
+            from app.services.chat_service import STATIC_RESPONSES
+            lang = (request.language or 'en').lower()
+            if lang not in STATIC_RESPONSES:
+                lang = 'en'
+            repeat_msg = {
+                'en': "You have already submitted a support request for this session. Our team will contact you soon.",
+                'es': "Ya has enviado una solicitud de soporte para esta sesión. Nuestro equipo te contactará pronto."
+            }
+            message = STATIC_RESPONSES[lang].get('support_repeat') \
+                if 'support_repeat' in STATIC_RESPONSES[lang] else repeat_msg[lang]
+            return SupportSubmitResponse(
+                success=False,
+                message=message,
+                request_id=None,
+            )
+
         # Build chat summary and extract fallback message from session history
         chat_summary = None
         fallback_message = None
@@ -38,12 +59,22 @@ async def submit_support_request(request: SupportSubmitRequest):
             chat_summary=chat_summary,
             source=request.source or "rag_fallback",
         )
+
+        # Set support state in Redis to prevent repeat submissions
+        await redis_session.set_support_state(
+            request.session_id,
+            not_satisfied_selected=True,
+            support_confirmation_pending=False,
+            selected_message_id=None
+        )
+        # Mark support_request_sent flag
+        await redis_session.update_context(request.session_id, support_request_sent=True, support_email=request.user_email)
+
         # Multilingual support: use STATIC_RESPONSES for success message
         from app.services.chat_service import STATIC_RESPONSES
         lang = (request.language or 'en').lower()
         if lang not in STATIC_RESPONSES:
             lang = 'en'
-        # Use the Spanish or English equivalent of the success message
         support_success_msg = {
             'en': "Thank you! A team member will contact you soon.",
             'es': "¡Gracias! Un miembro del equipo te contactará pronto."

@@ -50,6 +50,9 @@ const translations = {
     satisfied: "Satisfied",
     not_satisfied: "Not Satisfied",
     was_this_helpful: "Was this helpful?",
+    feedback_thank_you: "Thank you for your feedback!",
+    feedback_prompt: "Please rate your experience.",
+    cancel: "Cancel",
   },
   es: {
     title: "Asistente IA GetMee",
@@ -86,6 +89,9 @@ const translations = {
     satisfied: "Satisfecho",
     not_satisfied: "No satisfecho",
     was_this_helpful: "¿Fue útil?",
+    feedback_thank_you: "¡Gracias por tus comentarios!",
+    feedback_prompt: "Por favor califica tu experiencia.",
+    cancel: "Cancelar",
   },
 };
 
@@ -128,6 +134,9 @@ const ChatWidget = () => {
   const [emailAddress, setEmailAddress] = useState("");
   const [lastFallbackMessage, setLastFallbackMessage] = useState("");
   const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
+  const [supportPopupMode, setSupportPopupMode] = useState<'default' | 'prefilled'>("default");
+  const i = translations[lang];
+  const [supportPopupMessage, setSupportPopupMessage] = useState(i.emailPrompt);
 
   // Widget visibility state for minimize/close
   const [isMinimized, setIsMinimized] = useState(false);
@@ -176,7 +185,7 @@ const ChatWidget = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const i = translations[lang];
+  // (moved above)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -206,9 +215,18 @@ const ChatWidget = () => {
       // Show email collection if backend signals fallback OR if the
       // LLM answer indicates it couldn't find relevant information
       const noInfoPattern = /couldn'?t find information|no information available|unable to find|don't have information|no puedo encontrar información|no tengo información/i;
-      if (data.requires_email || noInfoPattern.test(data.answer)) {
+      if (data.prefilled_email) {
+        setEmailAddress(data.prefilled_email);
         setShowEmailInput(true);
         setLastFallbackMessage(userText);
+        setSupportPopupMode('prefilled');
+        setSupportPopupMessage(data.answer || (lang === 'es' ? 'Correo detectado. Por favor, proporciona tu solicitud de soporte a continuación.' : 'Email detected. Please provide your support request below.'));
+        return;
+      } else if (data.requires_email || noInfoPattern.test(data.answer)) {
+        setShowEmailInput(true);
+        setLastFallbackMessage(userText);
+        setSupportPopupMode('default');
+        setSupportPopupMessage(i.emailPrompt);
         return;
       }
 
@@ -266,7 +284,7 @@ const ChatWidget = () => {
         body: JSON.stringify({
           session_id: sessionId,
           user_email: emailAddress,
-          user_message: lastFallbackMessage,
+          user_message: sessionComment || lastFallbackMessage,
           language: lang,
           source,
         }),
@@ -694,14 +712,14 @@ const ChatWidget = () => {
             </div>
           )}
 
-          {/* Email collection — triggered by backend requires_email flag */}
+          {/* Email collection — triggered by backend requires_email flag or prefilled_email */}
           {showEmailInput && (
             <div className="mx-auto w-full max-w-sm bg-gradient-to-br from-secondary to-secondary/80 rounded-2xl p-5 flex flex-col gap-3 shadow-sm border border-border/50 animate-in fade-in slide-in-from-bottom-3 duration-300">
               <div className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
                 <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                   <Mail size={15} className="text-primary" />
                 </div>
-                <span>{i.emailPrompt}</span>
+                <span>{supportPopupMessage}</span>
               </div>
               <input
                 type="email"
@@ -711,6 +729,13 @@ const ChatWidget = () => {
                 placeholder={i.emailPlaceholder}
                 className="bg-background rounded-xl px-4 py-2.5 text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm transition-shadow"
                 autoFocus
+              />
+              <textarea
+                className="w-full border rounded p-2 mb-2 text-sm"
+                rows={2}
+                placeholder={i.optional_comment || (lang === 'es' ? 'Comentario opcional' : 'Optional comment')}
+                value={sessionComment}
+                onChange={e => setSessionComment(e.target.value)}
               />
               <div className="flex gap-2">
                 <button
