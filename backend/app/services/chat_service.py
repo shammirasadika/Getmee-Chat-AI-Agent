@@ -1,6 +1,7 @@
 STATIC_RESPONSES = {
     'en': {
         'bot_name': "My name is {bot_name}.",
+        'bot_intro': "Hi! I'm {bot_name}. I'm here to help you with your questions. How can I assist you today?",
         'nice_to_meet_you': "Nice to meet you!",
         'nice_to_meet_you_named': "Nice to meet you, {name}. How can I help you today?",
         'you_are_welcome': "You're welcome! Let me know if you need anything else.",
@@ -18,6 +19,7 @@ STATIC_RESPONSES = {
     },
     'es': {
         'bot_name': "Me llamo {bot_name}.",
+        'bot_intro': "Hola! Soy {bot_name}. Estoy aqui para ayudarte con tus preguntas. En que puedo ayudarte hoy?",
         'nice_to_meet_you': "¡Mucho gusto!",
         'nice_to_meet_you_named': "Mucho gusto, {name}. En que puedo ayudarte hoy?",
         'you_are_welcome': "De nada. Avísame si necesitas algo más.",
@@ -237,8 +239,8 @@ class ChatService:
             # Always respond in the selected language (default English)
             lang = self.selected_language if hasattr(self, 'selected_language') and self.selected_language else 'en'
             if lang == 'es':
-                return f"Me llamo {self.BOT_NAME}."
-            return f"My name is {self.BOT_NAME}."
+                return STATIC_RESPONSES[lang].get('bot_intro', STATIC_RESPONSES[lang]['bot_name']).format(bot_name=self.BOT_NAME)
+            return STATIC_RESPONSES[lang].get('bot_intro', STATIC_RESPONSES[lang]['bot_name']).format(bot_name=self.BOT_NAME)
 
         if '?' in msg:
             return True
@@ -409,7 +411,7 @@ class ChatService:
             ]
         )
         if bot_name_intent:
-            responses.append(STATIC_RESPONSES[lang]['bot_name'].format(bot_name=self.BOT_NAME))
+            responses.append(STATIC_RESPONSES[lang].get('bot_intro', STATIC_RESPONSES[lang]['bot_name']).format(bot_name=self.BOT_NAME))
         # User name intent
         user_name_intent = "what is my name" in msg_lower
         if user_name_intent:
