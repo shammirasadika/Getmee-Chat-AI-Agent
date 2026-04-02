@@ -47,6 +47,115 @@ import uuid
 
 
 class ChatService:
+    def _detect_reescalation_intent(self, message: str) -> bool:
+        msg = message.strip().lower()
+        phrases = [
+            # English
+            "i need staff support",
+            "i need to contact human",
+            "i need human support",
+            "i still need help",
+            "still need help",
+            "contact support again",
+            "my issue is not solved",
+            "no one contacted me",
+            "escalate again",
+            "open another ticket",
+            # Spanish
+            "necesito ayuda del personal",
+            "necesito contactar a un humano",
+            "necesito soporte humano",
+            "todavía necesito ayuda",
+            "contactar soporte otra vez",
+            "mi problema no está resuelto",
+            "nadie me contactó",
+        ]
+        return any(p in msg for p in phrases)
+    def _get_recontact_confirmation_message(self, language: str) -> str:
+        messages = {
+            "en": "Your enquiry has already been submitted for this session. Do you want to contact human support again?",
+            "es": "Tu consulta ya ha sido enviada para esta sesión. ¿Quieres contactar soporte humano de nuevo?"
+        }
+        return messages.get(language, messages["en"])
+
+    async def _get_support_context(self, session_key: str) -> dict:
+        """
+        Get support-related state from Redis context.
+        """
+        context = await self.message_service.redis_session.get_context(session_key)
+        context = context or {}
+        return {
+            "support_request_sent": context.get("support_request_sent", False),
+            "support_email": context.get("support_email"),
+            "support_ticket_id": context.get("support_ticket_id"),
+            "support_status": context.get("support_status"),
+            "support_request_count": context.get("support_request_count", 0),
+            "recontact_confirmation_shown": context.get("recontact_confirmation_shown", False),
+        }
+
+    async def _mark_support_submitted(
+        self,
+        session_key: str,
+        email: str,
+        ticket_id: str = None,
+        status: str = "open"
+    ) -> None:
+        """
+        Mark support escalation as submitted in Redis context.
+        Only increment support_request_count after actual submission (not on confirmation).
+        """
+        context = await self.message_service.redis_session.get_context(session_key)
+        context = context or {}
+        context["support_request_sent"] = True
+        context["support_email"] = email
+        context["support_ticket_id"] = ticket_id or str(uuid.uuid4())
+        context["support_status"] = status
+        # Only increment if not already incremented for this submission
+        if not context.get("_support_counted_this_submission", False):
+            context["support_request_count"] = context.get("support_request_count", 0) + 1
+            context["_support_counted_this_submission"] = True
+        await self.message_service.redis_session.set_context(session_key, context)
+
+    async def _clear_support_state(self, session_key: str) -> None:
+        """
+        Optional helper if you want to reset support state later.
+        """
+        context = await self.message_service.redis_session.get_context(session_key)
+        context = context or {}
+        context["support_request_sent"] = False
+        context["support_email"] = None
+        context["support_ticket_id"] = None
+        context["support_status"] = None
+        await self.message_service.redis_session.set_context(session_key, context)
+
+    def _get_repeat_escalation_message(self, language: str) -> str:
+        messages = {
+            "en": "Your enquiry has already been submitted. A team member will contact you soon.",
+            "es": "Tu consulta ya ha sido enviada. Un miembro del equipo se pondrá en contacto contigo pronto."
+        }
+        return messages.get(language, messages["en"])
+
+    def _get_email_received_message(self, language: str) -> str:
+        messages = {
+            "en": "Thanks! I’ve received your email. Please describe your issue below so our support team can assist you.",
+            "es": "¡Gracias! Hemos recibido tu correo electrónico. Por favor describe tu problema a continuación para que nuestro equipo de soporte pueda ayudarte."
+        }
+        return messages.get(language, messages["en"])
+
+    def _get_first_support_prompt(self, language: str) -> str:
+        messages = {
+            "en": (
+                "I couldn’t find a relevant answer to your question. "
+                "Your enquiry can be forwarded to our support team. "
+                "Please provide your email address so a team member can contact you."
+            ),
+            "es": (
+                "No pude encontrar una respuesta relevante a tu pregunta. "
+                "Tu consulta puede ser enviada a nuestro equipo de soporte. "
+                "Por favor, proporciona tu correo electrónico para que un miembro del equipo pueda contactarte."
+            ),
+        }
+        return messages.get(language, messages["en"])
     async def _handle_follow_up_message(self, message: str, session_key: str, language: str) -> str:
         """
         Detect and answer follow-up memory questions about recent conversation history.
@@ -456,17 +565,91 @@ class ChatService:
         # 1. Direct email detection
         email_pattern = r"[\w.\-+]+@[\w.\-]+\.\w+"
         email_match = re.search(email_pattern, request.message)
-        if email_match:
+        support_context = await self._get_support_context(session_key)
+        lang = request.language or "en"
+        max_support_requests = 3
+        reescalation_intent = self._detect_reescalation_intent(request.message)
+
+        # Handle Yes/No confirmation actions
+        if hasattr(request, 'recontact_confirmed') and getattr(request, 'recontact_confirmed', False):
+            # User clicked Yes to recontact
+            if support_context.get("support_request_count", 0) < max_support_requests:
+                # Always trigger support submission window (email popup)
+                return ChatResponse(
+                    answer=self._get_email_received_message(lang),
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=True,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                    prefilled_email=support_context.get("support_email"),
+                    support_comment_enabled=True,
+                    show_support_options=True,
+                    allow_recontact=False,
+                    show_recontact_confirmation=False,
+                    support_submit_label="Contact again",
+                )
+            else:
+                # Max limit reached
+                limit_msg = {
+                    "en": "You have reached the maximum number of support requests for this session. Please wait for our team to contact you.",
+                    "es": "Has alcanzado el número máximo de solicitudes de soporte para esta sesión. Por favor espera a que nuestro equipo se comunique contigo."
+                }.get(lang, "You have reached the maximum number of support requests for this session. Please wait for our team to contact you.")
+                return ChatResponse(
+                    answer=limit_msg,
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                    prefilled_email=None,
+                    support_comment_enabled=False,
+                    show_support_options=False,
+                    allow_recontact=False,
+                    show_recontact_confirmation=False,
+                    support_submit_label=None,
+                )
+
+        if hasattr(request, 'recontact_declined') and getattr(request, 'recontact_declined', False):
+            # User clicked No: close confirmation, continue normal chat
+            return ChatResponse(
+                answer="Okay, let us know if you need anything else.",
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=True,
+                prefilled_email=None,
+                support_comment_enabled=False,
+                show_support_options=False,
+                allow_recontact=False,
+                show_recontact_confirmation=False,
+                support_submit_label=None,
+            )
+
+        # 1. First support request: open form if not yet submitted
+        if email_match and not support_context.get("support_request_sent"):
             detected_email = email_match.group(0)
             await self.session_service.update_session_email(session_key, detected_email)
-            lang = request.language or 'en'
-            localized_msg = {
-                'en': "Thanks! I’ve received your email. Please describe your issue below so our support team can assist you.",
-                'es': "¡Gracias! Hemos recibido tu correo electrónico. Por favor describe tu problema a continuación para que nuestro equipo de soporte pueda ayudarte."
-            }.get(lang, "Thanks! I’ve received your email. Please describe your issue below so our support team can assist you.")
-            # Save user message and bot reply to Redis
-            await self.message_service.redis_session.push_message(session_key, {"role": "user", "text": request.message, "language": lang})
-            await self.message_service.redis_session.push_message(session_key, {"role": "bot", "text": localized_msg, "language": lang})
+            # Do not increment count until actual submission
+            localized_msg = self._get_email_received_message(lang)
+            await self.message_service.redis_session.push_message(
+                session_key,
+                {"role": "user", "text": request.message, "language": lang}
+            )
+            await self.message_service.redis_session.push_message(
+                session_key,
+                {"role": "bot", "text": localized_msg, "language": lang}
+            )
             return ChatResponse(
                 answer=localized_msg,
                 language=lang,
@@ -479,6 +662,114 @@ class ChatService:
                 show_feedback=False,
                 prefilled_email=detected_email,
                 support_comment_enabled=True,
+                show_support_options=True,
+                allow_recontact=False,
+                show_recontact_confirmation=False,
+                support_submit_label=None,
+            )
+
+        # 2. If support already submitted and user enters email again or asks for human support, show confirmation
+        if support_context.get("support_request_sent") and (email_match or reescalation_intent):
+            # If max reached, block
+            if support_context.get("support_request_count", 0) >= max_support_requests:
+                limit_msg = {
+                    "en": "You have reached the maximum number of support requests for this session. Please wait for our team to contact you.",
+                    "es": "Has alcanzado el número máximo de solicitudes de soporte para esta sesión. Por favor espera a que nuestro equipo se comunique contigo."
+                }.get(lang, "You have reached the maximum number of support requests for this session. Please wait for our team to contact you.")
+                return ChatResponse(
+                    answer=limit_msg,
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                    prefilled_email=None,
+                    support_comment_enabled=False,
+                    show_support_options=False,
+                    allow_recontact=False,
+                    show_recontact_confirmation=False,
+                    support_submit_label=None,
+                )
+            # Always show confirmation dialog (no session flag block)
+            confirmation_msg = {
+                "en": "Your request has already been submitted to human support for this session. Do you want to contact support again?",
+                "es": "Tu consulta ya fue enviada al soporte humano en esta sesión. ¿Quieres contactar al soporte nuevamente?"
+            }.get(lang, self._get_recontact_confirmation_message(lang))
+            return ChatResponse(
+                answer=confirmation_msg,
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+                prefilled_email=support_context.get("support_email"),
+                support_comment_enabled=False,
+                show_support_options=False,
+                allow_recontact=True,
+                show_recontact_confirmation=True,
+                support_submit_label=None,
+            )
+            # If max support requests reached, block further tickets
+            if support_context.get("support_request_count", 0) >= max_support_requests:
+                limit_msg = {
+                    "en": "You have reached the maximum number of support requests for this session.",
+                    "es": "Has alcanzado el número máximo de solicitudes de soporte para esta sesión."
+                }.get(lang, "You have reached the maximum number of support requests for this session.")
+                await self.message_service.redis_session.push_message(
+                    session_key,
+                    {"role": "user", "text": request.message, "language": lang}
+                )
+                await self.message_service.redis_session.push_message(
+                    session_key,
+                    {"role": "bot", "text": limit_msg, "language": lang}
+                )
+                return ChatResponse(
+                    answer=limit_msg,
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                    prefilled_email=None,
+                    support_comment_enabled=False,
+                    show_support_options=False,
+                    allow_recontact=False,
+                )
+            # First-time or explicit re-escalation
+            await self.session_service.update_session_email(session_key, detected_email)
+            await self._mark_support_submitted(session_key=session_key, email=detected_email)
+            localized_msg = self._get_email_received_message(lang)
+            await self.message_service.redis_session.push_message(
+                session_key,
+                {"role": "user", "text": request.message, "language": lang}
+            )
+            await self.message_service.redis_session.push_message(
+                session_key,
+                {"role": "bot", "text": localized_msg, "language": lang}
+            )
+            return ChatResponse(
+                answer=localized_msg,
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=True,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+                prefilled_email=detected_email,
+                support_comment_enabled=True,
+                show_support_options=True,
+                allow_recontact=False,
             )
 
         # 2. Support intent detection (if any, not shown in this excerpt)
@@ -658,33 +949,57 @@ class ChatService:
         # 4. If no relevant context in either language — strict fallback (NO LLM generation)
         if not relevant_chunks:
             print(f"[Chat] Step 4: No relevant chunks — returning strict fallback message (LLM skipped)", flush=True)
-            fallback_message = self.language_service.get_fallback_message(request.language)
-            # If fallback_message is not in the selected language, translate it
-            if request.language != self.selected_language:
-                try:
-                    fallback_message = await self.llm_client.translate(fallback_message, target_language=request.language)
-                except Exception as e:
-                    print(f"[Chat] Fallback translation error: {e}", flush=True)
+            lang = request.language or "en"
+            support_context = await self._get_support_context(session_key)
+            reescalation_intent = self._detect_reescalation_intent(request.message)
+            max_support_requests = 3
 
-            # Save bot fallback message to PG + Redis (sets feedback_state)
+            if support_context.get("support_request_sent"):
+                # Only allow confirmation via explicit frontend action, not message text
+                fallback_message = self._get_repeat_escalation_message(lang)
+                requires_email = False
+                show_support_options = False
+                support_comment_enabled = False
+                prefilled_email = support_context.get("support_email")
+                allow_recontact = True if support_context.get("support_request_count", 0) < max_support_requests else False
+                show_recontact_confirmation = False
+            else:
+                fallback_message = self._get_first_support_prompt(lang)
+                requires_email = True
+                show_support_options = True
+                support_comment_enabled = True
+                prefilled_email = None
+                allow_recontact = False
+
             bot_msg = await self.message_service.save_bot_message(
-                session_id=session_uuid, session_key=session_key,
-                text=fallback_message, language=request.language,
-                fallback_used=True, source_type="fallback",
+                session_id=session_uuid,
+                session_key=session_key,
+                text=fallback_message,
+                language=lang,
+                fallback_used=True,
+                source_type="fallback",
             )
-            # Legacy turn save
-            await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": fallback_message})
+
+            await self.session_service.save_turn(
+                request.session_id,
+                {"user": request.message, "bot": fallback_message}
+            )
 
             return ChatResponse(
                 answer=fallback_message,
-                language=request.language,
+                language=lang,
                 sources=[],
                 fallback_used=True,
-                requires_email=True,
+                requires_email=requires_email,
                 retrieval_language=retrieval_language,
                 message_id=str(bot_msg["id"]),
                 session_uuid=str(session_uuid),
                 show_feedback=True,
+                show_support_options=show_support_options,
+                support_comment_enabled=support_comment_enabled,
+                prefilled_email=prefilled_email,
+                allow_recontact=allow_recontact,
+                show_recontact_confirmation=show_recontact_confirmation,
             )
 
         sources = [{"text": doc[:200]} for doc in relevant_chunks]
