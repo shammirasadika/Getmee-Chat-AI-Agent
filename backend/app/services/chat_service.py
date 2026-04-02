@@ -2,6 +2,7 @@ STATIC_RESPONSES = {
     'en': {
         'bot_name': "My name is {bot_name}.",
         'nice_to_meet_you': "Nice to meet you!",
+        'nice_to_meet_you_named': "Nice to meet you, {name}. How can I help you today?",
         'you_are_welcome': "You're welcome! Let me know if you need anything else.",
         'fallback': "I couldn’t find a relevant answer to your question.",
         'no_name': "I don’t have your name yet.",
@@ -18,6 +19,7 @@ STATIC_RESPONSES = {
     'es': {
         'bot_name': "Me llamo {bot_name}.",
         'nice_to_meet_you': "¡Mucho gusto!",
+        'nice_to_meet_you_named': "Mucho gusto, {name}. En que puedo ayudarte hoy?",
         'you_are_welcome': "De nada. Avísame si necesitas algo más.",
         'fallback': "No pude encontrar una respuesta relevante a tu pregunta.",
         'no_name': "No tengo tu nombre todavía.",
@@ -50,6 +52,12 @@ import re
 
 class ChatService:
     BOT_NAME = "Getmee Chatbot"
+    _NAME_CONTINUATION_STOPWORDS = {
+        "and", "but", "because", "so", "that", "please", "thanks", "thank",
+        "need", "want", "would", "can", "could", "should", "help", "question",
+        "issue", "problem", "email", "phone", "about", "with", "for", "to",
+        "is", "am", "are", "was", "were", "here"
+    }
 
     SMALL_TALK_KEYWORDS = {
         # English
@@ -77,22 +85,54 @@ class ChatService:
         "entendido": "¡Genial! Avísame si necesitas algo más.",
     }
 
+    def _normalize_detected_name(self, candidate: str) -> str:
+        if not candidate:
+            return None
+
+        cleaned = re.sub(r"^[\s,.:;!?'-]+|[\s,.:;!?'-]+$", "", candidate)
+        if not cleaned:
+            return None
+
+        parts = []
+        for part in cleaned.split():
+            normalized_part = part.strip(" ,.:;!?\"'")
+            if not normalized_part:
+                continue
+            if normalized_part.lower() in self._NAME_CONTINUATION_STOPWORDS:
+                break
+            parts.append(normalized_part)
+            if len(parts) == 3:
+                break
+
+        if not parts:
+            return None
+
+        name = " ".join(parts)
+        if name.lower() in self._NAME_CONTINUATION_STOPWORDS:
+            return None
+        return name
+
     def _detect_context_update(self, message: str) -> str:
         """
-        Extracts the user's name from the message if present.
-        Supports 'my name is ...', 'i am ...', and "i'm ..." patterns anywhere in the message.
+        Extract the user's name from natural English introductions.
         Returns the first matched name, or None if not found.
         """
-        patterns = [
-            r"\bmy name is\s+([A-Za-z'-]+)",
-            r"\bi am\s+([A-Za-z'-]+)",
-            r"\bi'm\s+([A-Za-z'-]+)"
+        name_patterns = [
+            r"\bmy name is\s+([A-Za-z][A-Za-z' -]{0,48})",
+            r"\bmy name\s+([A-Za-z][A-Za-z' -]{0,48})",
+            r"\bi am\s+([A-Za-z][A-Za-z' -]{0,48})",
+            r"\bi'm\s+([A-Za-z][A-Za-z' -]{0,48})",
+            r"\bits\s+([A-Za-z][A-Za-z' -]{0,48})",
+            r"\bit's\s+([A-Za-z][A-Za-z' -]{0,48})",
+            r"\bthis is\s+([A-Za-z][A-Za-z' -]{0,48})",
+            r"\b([A-Za-z][A-Za-z' -]{0,48})\s+here\b",
         ]
-        for pat in patterns:
-            match = re.search(pat, message, re.IGNORECASE)
+        for pattern in name_patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
             if match:
-                name = match.group(1)
-                return name
+                name = self._normalize_detected_name(match.group(1))
+                if name:
+                    return name
         return None
 
     # Phrases that mean "yes, continue / do what you suggested"
@@ -426,8 +466,9 @@ class ChatService:
                 )
                 lang = request.language or 'en'
                 print(f"[Chat] Final answer language: {lang}", flush=True)
+                named_greeting = STATIC_RESPONSES[lang].get('nice_to_meet_you_named')
                 return ChatResponse(
-                    answer=STATIC_RESPONSES[lang]['nice_to_meet_you'],
+                    answer=(named_greeting.format(name=name_update) if named_greeting else STATIC_RESPONSES[lang]['nice_to_meet_you']),
                     language=lang,
                     sources=[],
                     fallback_used=False,
@@ -482,7 +523,8 @@ class ChatService:
         name_update = self._detect_context_update(request.message)
         if name_update:
             language = request.language or self.language_service.detect_language(request.message)
-            answer = STATIC_RESPONSES[language]['nice_to_meet_you']
+            named_greeting = STATIC_RESPONSES[language].get('nice_to_meet_you_named')
+            answer = named_greeting.format(name=name_update) if named_greeting else STATIC_RESPONSES[language]['nice_to_meet_you']
             # Store name in Redis context (as user_name)
             await self.message_service.redis_session.update_context(session_key, user_name=name_update)
             await self.message_service.save_user_message(
