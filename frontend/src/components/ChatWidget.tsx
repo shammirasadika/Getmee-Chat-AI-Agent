@@ -304,6 +304,7 @@ const ChatWidget = () => {
           source = lastFallbackMessage._source;
         }
 
+        // 1. Legacy support request (support_requests table)
         const res = await fetch(`${API_BASE}/api/support/`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -317,6 +318,18 @@ const ChatWidget = () => {
         });
         if (!res.ok) throw new Error(`Support API error: ${res.status}`);
         const data = await res.json();
+
+        // 2. New support ticket (support_tickets table)
+        await fetch(`${API_BASE}/api/feedback/contact-support`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_key: sessionId,
+            user_email: supportEmail,
+            issue_summary: supportComment || lastFallbackMessage,
+            source,
+          }),
+        });
 
         setShowSupportForm(false);
         setSupportEmail("");
@@ -344,22 +357,61 @@ const ChatWidget = () => {
     // Language dropdown state
     const [showLangDropdown, setShowLangDropdown] = useState(false);
 
+    // Feedback API call
+    const sendFeedback = async (messageId: string, feedbackType: "satisfied" | "not_satisfied") => {
+      try {
+        const res = await fetch(`${API_BASE}/api/feedback/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_key: sessionId,
+            message_id: messageId,
+            feedback: feedbackType,
+          }),
+        });
+        if (!res.ok) throw new Error(`Feedback API error: ${res.status}`);
+        const data = await res.json();
+        console.log("[ChatWidget] Feedback API response:", data);
+      } catch (err) {
+        console.error("[ChatWidget] Feedback API error:", err);
+      }
+    };
+
     // Feedback handler with Unsatisfied escalation logic
     const handleFeedback = (messageId: string, type: string) => {
       setFeedbackMap((prev) => ({ ...prev, [messageId]: type }));
       if (type === "negative") {
-        // Debug: log Unsatisfied click
-        console.log("[ChatWidget] Unsatisfied (Not Satisfied) clicked for messageId:", messageId);
-        // Send escalation payload
+        sendFeedback(messageId, "not_satisfied");
         sendToApi("unsatisfied", { unsatisfied_click: true });
       } else if (type === "positive") {
-        // Show rating window for Satisfied
+        sendFeedback(messageId, "satisfied");
         setShowSessionRating(true);
       }
     };
 
-    // Session rating submit stub
+    // Session feedback API call
+    const sendSessionFeedback = async (rating: number, comment: string) => {
+      try {
+        const res = await fetch(`${API_BASE}/api/feedback/session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_key: sessionId,
+            rating,
+            comment,
+          }),
+        });
+        if (!res.ok) throw new Error(`Session feedback API error: ${res.status}`);
+        const data = await res.json();
+        console.log("[ChatWidget] Session feedback API response:", data);
+      } catch (err) {
+        console.error("[ChatWidget] Session feedback API error:", err);
+      }
+    };
+
+    // Session rating submit
     const submitSessionRating = () => {
+      sendSessionFeedback(sessionRating, supportComment);
       setShowSessionRating(false);
       setSessionRating(0);
       setSupportComment("");

@@ -591,6 +591,14 @@ class ChatService:
         session = await self.session_service.get_or_create_session(session_key, request.language)
         session_uuid = session["id"]  # PG UUID
 
+        # Save user message to chat_messages table
+        user_msg = await self.message_service.save_user_message(
+            session_id=session_uuid,
+            session_key=session_key,
+            text=request.message,
+            language=request.language
+        )
+
         # Ensure retrieval_language and fallback_used are always initialized
         retrieval_language = self.selected_language
         fallback_used = False

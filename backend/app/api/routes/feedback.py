@@ -41,22 +41,27 @@ async def message_feedback_endpoint(
     frontend can present Try Again / Contact Support.
     """
     try:
+        print(f"[API] /message payload: {request.dict() if hasattr(request, 'dict') else request}")
         # Resolve PG session
         session = await session_service.get_or_create_session(request.session_key)
         session_id = session["id"]
+        print(f"[API] Resolved session_id: {session_id}")
 
         # Parse message UUID
         try:
             message_uuid = _uuid.UUID(request.message_id)
         except ValueError:
+            print(f"[API] Invalid message_id: {request.message_id}")
             raise HTTPException(status_code=400, detail="Invalid message_id (must be UUID)")
 
+        print(f"[API] Parsed message_uuid: {message_uuid}")
         row = await feedback_service.submit_message_feedback(
             session_key=request.session_key,
             session_id=session_id,
             message_id=message_uuid,
             feedback=request.feedback,
         )
+        print(f"[API] Feedback insert result: {row}")
         return MessageFeedbackResponse(
             success=True,
             feedback=request.feedback,
@@ -65,6 +70,7 @@ async def message_feedback_endpoint(
     except HTTPException:
         raise
     except Exception as e:
+        print(f"[API] Exception in /message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -78,16 +84,20 @@ async def session_feedback_endpoint(
 ):
     """Record a 1–5 star rating for the whole conversation."""
     try:
+        print(f"[API] /session payload: {request.dict() if hasattr(request, 'dict') else request}")
         session = await session_service.get_or_create_session(request.session_key)
         session_id = session["id"]
-        await feedback_service.submit_session_feedback(
+        print(f"[API] Resolved session_id: {session_id}")
+        row = await feedback_service.submit_session_feedback(
             session_key=request.session_key,
             session_id=session_id,
             rating=request.rating,
             comment=request.comment,
         )
+        print(f"[API] Session feedback insert result: {row}")
         return SessionFeedbackResponse(success=True, detail="Session rating saved.")
     except Exception as e:
+        print(f"[API] Exception in /session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -135,6 +145,8 @@ async def contact_support_endpoint(
     try:
         session = await session_service.get_or_create_session(request.session_key)
         session_id = session["id"]
+        # Always use string versions for all downstream calls
+        session_id_str = str(session_id) if not isinstance(session_id, str) else session_id
 
         # Derive issue summary from Redis support_state if not provided
         issue_summary = request.issue_summary or "User requested human support after unsatisfactory bot answer."
@@ -147,7 +159,7 @@ async def contact_support_endpoint(
         message_id = None
         if support_state and support_state.get("selected_message_id"):
             try:
-                message_id = _uuid.UUID(support_state["selected_message_id"])
+                message_id = str(_uuid.UUID(support_state["selected_message_id"]))
             except ValueError:
                 pass
 
@@ -155,13 +167,13 @@ async def contact_support_endpoint(
         if request.user_email:
             from app.clients.postgres_client import PostgresClient
             db = PostgresClient(_settings.POSTGRES_URL)
-            await db.update_session_email(session_id, request.user_email)
+            await db.update_session_email(session_id_str, request.user_email)
 
         # Save to support_requests for unified escalation tracking
         from app.services.support_service import SupportService
         support_service = SupportService()
         await support_service.handle_fallback_escalation(
-            session_id=session_id,
+            session_id=session_id_str,
             user_message=issue_summary,
             user_email=request.user_email or "",
             language="en",
@@ -170,7 +182,7 @@ async def contact_support_endpoint(
             source=request.source or "user_unsatisfied",
         )
         ticket = await ticket_service.create_ticket(
-            session_id=session_id,
+            session_id=session_id_str,
             session_key=request.session_key,
             issue_summary=issue_summary,
             message_id=message_id,
