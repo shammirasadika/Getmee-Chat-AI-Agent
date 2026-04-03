@@ -1,3 +1,11 @@
+"""
+support.py
+
+This module contains API endpoints for direct support requests.
+Use these endpoints when a user proactively submits a support request (e.g., via a standalone support form), not tied to the feedback flow.
+
+Best practice: Keep these endpoints separate from feedback-driven escalation for clarity, unless/until both flows are identical.
+"""
 from fastapi import APIRouter, HTTPException, Query
 import traceback
 from app.services.support_service import SupportService

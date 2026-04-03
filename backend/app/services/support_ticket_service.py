@@ -40,7 +40,6 @@ class SupportTicketService:
             waiting_for_support_confirmation=False,
             chat_status="escalated",
         )
-        print(f"[SupportTicket] Created ticket {ticket['id']} for session {session_key}", flush=True)
         return ticket
 
     async def handle_try_again(self, session_key: str):

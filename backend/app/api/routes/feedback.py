@@ -1,3 +1,11 @@
+"""
+feedback.py
+
+This module contains API endpoints for feedback-driven support escalation.
+Use these endpoints when support escalation is triggered as part of the chat/feedback flow (e.g., user clicks 'Not Satisfied' and requests human help).
+
+Best practice: Keep these endpoints separate from direct support requests for clarity, unless/until both flows are identical.
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from app.models.feedback import (
     FeedbackRequest, FeedbackResponse,
@@ -15,18 +23,6 @@ import uuid as _uuid
 router = APIRouter()
 
 
-# ── Legacy endpoint (backwards-compatible) ───────
-
-@router.post("/", response_model=FeedbackResponse)
-async def feedback_endpoint(request: FeedbackRequest, feedback_service: FeedbackService = Depends()):
-    """Legacy: save quick thumbs-up/down to old feedback table."""
-    try:
-        response = await feedback_service.handle_feedback(request)
-        return response
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # ── Message-level feedback  (Satisfied / Not Satisfied) ──
 
 @router.post("/message", response_model=MessageFeedbackResponse)
@@ -41,27 +37,22 @@ async def message_feedback_endpoint(
     frontend can present Try Again / Contact Support.
     """
     try:
-        print(f"[API] /message payload: {request.dict() if hasattr(request, 'dict') else request}")
         # Resolve PG session
         session = await session_service.get_or_create_session(request.session_key)
         session_id = session["id"]
-        print(f"[API] Resolved session_id: {session_id}")
 
         # Parse message UUID
         try:
             message_uuid = _uuid.UUID(request.message_id)
         except ValueError:
-            print(f"[API] Invalid message_id: {request.message_id}")
             raise HTTPException(status_code=400, detail="Invalid message_id (must be UUID)")
 
-        print(f"[API] Parsed message_uuid: {message_uuid}")
         row = await feedback_service.submit_message_feedback(
             session_key=request.session_key,
             session_id=session_id,
             message_id=message_uuid,
             feedback=request.feedback,
         )
-        print(f"[API] Feedback insert result: {row}")
         return MessageFeedbackResponse(
             success=True,
             feedback=request.feedback,
@@ -70,7 +61,6 @@ async def message_feedback_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[API] Exception in /message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -84,20 +74,16 @@ async def session_feedback_endpoint(
 ):
     """Record a 1–5 star rating for the whole conversation."""
     try:
-        print(f"[API] /session payload: {request.dict() if hasattr(request, 'dict') else request}")
         session = await session_service.get_or_create_session(request.session_key)
         session_id = session["id"]
-        print(f"[API] Resolved session_id: {session_id}")
         row = await feedback_service.submit_session_feedback(
             session_key=request.session_key,
             session_id=session_id,
             rating=request.rating,
             comment=request.comment,
         )
-        print(f"[API] Session feedback insert result: {row}")
         return SessionFeedbackResponse(success=True, detail="Session rating saved.")
     except Exception as e:
-        print(f"[API] Exception in /session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
