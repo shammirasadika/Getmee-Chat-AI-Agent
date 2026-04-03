@@ -31,14 +31,14 @@ class FeedbackService:
         - If not_satisfied, sets up support_state for escalation flow
         """
 
-        print(f"[DEBUG] submit_message_feedback called with: session_key={session_key}, session_id={session_id}, message_id={message_id}, feedback={feedback}")
+        # Debug print removed
         # Persist to PostgreSQL
         row = await self.db.insert_message_feedback(
             message_id=message_id,
             session_id=session_id,
             feedback=feedback,
         )
-        print(f"[DEBUG] Feedback inserted into DB: {row}")
+        # Debug print removed
 
         # Update Redis: mark feedback submitted
         await self.redis_session.mark_feedback_submitted(session_key)

@@ -9,4 +9,3 @@ r = redis.from_url(REDIS_URL)
 
 # Delete all keys
 r.flushdb()
-print("All Redis data cleared.")
