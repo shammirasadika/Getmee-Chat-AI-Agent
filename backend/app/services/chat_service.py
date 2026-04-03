@@ -2,6 +2,11 @@ STATIC_RESPONSES = {
     'en': {
         'bot_name': "My name is {bot_name}.",
         'bot_intro': "Hi! I'm {bot_name}. I'm here to help you with your questions. How can I assist you today?",
+        'email_multiple_found': "I found multiple email addresses: {emails}. Please reply with the one you want me to save (you can send the email or its number).",
+        'email_pick_invalid': "I still need one email from this list: {emails}. Please reply with the email or its number.",
+        'email_saved': "Thanks! I have successfully saved your email address: {email}. Our team can use this to contact you.",
+        'email_invalid': "That email format looks invalid. Please share a valid email address.",
+        'email_save_failed': "I found your email, but I could not save it right now. Please try again.",
         'nice_to_meet_you': "Nice to meet you!",
         'nice_to_meet_you_named': "Nice to meet you, {name}. How can I help you today?",
         'you_are_welcome': "You're welcome! Let me know if you need anything else.",
@@ -20,6 +25,11 @@ STATIC_RESPONSES = {
     'es': {
         'bot_name': "Me llamo {bot_name}.",
         'bot_intro': "Hola! Soy {bot_name}. Estoy aqui para ayudarte con tus preguntas. En que puedo ayudarte hoy?",
+        'email_multiple_found': "Encontre varios correos: {emails}. Responde con el que quieres que guarde (puedes enviar el correo o su numero).",
+        'email_pick_invalid': "Aun necesito un correo de esta lista: {emails}. Responde con el correo o su numero.",
+        'email_saved': "Gracias! He guardado correctamente tu correo: {email}. Nuestro equipo puede usarlo para contactarte.",
+        'email_invalid': "El formato del correo no parece valido. Comparte un correo electronico valido.",
+        'email_save_failed': "Encontre tu correo, pero no pude guardarlo ahora. Intentalo de nuevo.",
         'nice_to_meet_you': "¡Mucho gusto!",
         'nice_to_meet_you_named': "Mucho gusto, {name}. En que puedo ayudarte hoy?",
         'you_are_welcome': "De nada. Avísame si necesitas algo más.",
@@ -268,6 +278,68 @@ class ChatService:
         ]
         return any(re.search(p, t) for p in patterns)
 
+    def _extract_emails_from_message(self, message: str) -> list:
+        if not message:
+            return []
+        matches = re.findall(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", message)
+        unique = []
+        seen = set()
+        for email in matches:
+            lowered = email.lower()
+            if lowered not in seen:
+                seen.add(lowered)
+                unique.append(email)
+        return unique
+
+    def _is_valid_email(self, email: str) -> bool:
+        if not email:
+            return False
+        if len(email) > 254:
+            return False
+        return re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", email) is not None
+
+    def _looks_like_email_attempt(self, message: str) -> bool:
+        if not message:
+            return False
+        lowered = message.lower()
+        return "@" in message or "email" in lowered or "mail" in lowered
+
+    def _format_email_candidates(self, emails: list) -> str:
+        return ", ".join(f"{idx + 1}. {value}" for idx, value in enumerate(emails))
+
+    def _resolve_selected_email(self, message: str, candidates: list) -> str:
+        if not message:
+            return None
+        text = message.strip()
+        if text.isdigit():
+            idx = int(text)
+            if 1 <= idx <= len(candidates):
+                return candidates[idx - 1]
+
+        emails_in_msg = self._extract_emails_from_message(text)
+        if emails_in_msg:
+            selected = emails_in_msg[0]
+            candidate_map = {c.lower(): c for c in candidates}
+            return candidate_map.get(selected.lower())
+
+        normalized = text.lower().strip(" .,!?")
+        for candidate in candidates:
+            if normalized == candidate.lower():
+                return candidate
+        return None
+
+    async def _store_user_email(self, session_key: str, session_uuid: str, email: str) -> bool:
+        try:
+            await self.db.update_session_email(session_uuid, email)
+            await self.message_service.redis_session.update_context(session_key, user_email=email)
+
+            ctx = await self.message_service.redis_session.get_context(session_key)
+            db_session = await self.db.get_or_create_session(session_key)
+            return (ctx or {}).get("user_email") == email and (db_session or {}).get("user_email") == email
+        except Exception as e:
+            print(f"[Chat] Email store error: {e}", flush=True)
+            return False
+
     def _answer_from_session_context(self, message: str, recent_messages: list) -> str:
         msg = message.strip().lower()
         # Simple logic for demo: look for name or last user message
@@ -388,6 +460,150 @@ class ChatService:
         session_key = request.session_id  # frontend sends this as session_key
         session = await self.session_service.get_or_create_session(session_key, request.language)
         session_uuid = session["id"]  # PG UUID
+
+        # 0a. Email handling: no auto-save when multiple emails are found.
+        language = request.language or self.language_service.detect_language(request.message)
+        lang = language if language in STATIC_RESPONSES else 'en'
+        ctx = await self.message_service.redis_session.get_context(session_key)
+        pending_candidates = (ctx or {}).get("pending_email_candidates")
+
+        if pending_candidates:
+            await self.message_service.save_user_message(
+                session_id=session_uuid, session_key=session_key,
+                text=request.message, language=lang,
+            )
+            selected_email = self._resolve_selected_email(request.message, pending_candidates)
+            if not selected_email:
+                return ChatResponse(
+                    answer=STATIC_RESPONSES[lang]['email_pick_invalid'].format(
+                        emails=self._format_email_candidates(pending_candidates)
+                    ),
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
+
+            if not self._is_valid_email(selected_email):
+                return ChatResponse(
+                    answer=STATIC_RESPONSES[lang]['email_invalid'],
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
+
+            stored = await self._store_user_email(session_key, session_uuid, selected_email)
+            if stored:
+                await self.message_service.redis_session.update_context(session_key, pending_email_candidates=None)
+                return ChatResponse(
+                    answer=STATIC_RESPONSES[lang]['email_saved'].format(email=selected_email),
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
+
+            return ChatResponse(
+                answer=STATIC_RESPONSES[lang]['email_save_failed'],
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
+
+        detected_emails = self._extract_emails_from_message(request.message)
+        if len(detected_emails) > 1:
+            await self.message_service.save_user_message(
+                session_id=session_uuid, session_key=session_key,
+                text=request.message, language=lang,
+            )
+            await self.message_service.redis_session.update_context(
+                session_key,
+                pending_email_candidates=detected_emails,
+            )
+            return ChatResponse(
+                answer=STATIC_RESPONSES[lang]['email_multiple_found'].format(
+                    emails=self._format_email_candidates(detected_emails)
+                ),
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
+
+        if len(detected_emails) == 1:
+            await self.message_service.save_user_message(
+                session_id=session_uuid, session_key=session_key,
+                text=request.message, language=lang,
+            )
+            email = detected_emails[0]
+            if not self._is_valid_email(email):
+                return ChatResponse(
+                    answer=STATIC_RESPONSES[lang]['email_invalid'],
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
+
+            stored = await self._store_user_email(session_key, session_uuid, email)
+            if stored:
+                return ChatResponse(
+                    answer=STATIC_RESPONSES[lang]['email_saved'].format(email=email),
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
+
+            return ChatResponse(
+                answer=STATIC_RESPONSES[lang]['email_save_failed'],
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
+
+        if self._looks_like_email_attempt(request.message):
+            await self.message_service.save_user_message(
+                session_id=session_uuid, session_key=session_key,
+                text=request.message, language=lang,
+            )
+            return ChatResponse(
+                answer=STATIC_RESPONSES[lang]['email_invalid'],
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
 
         # 1. Question intent detection (takes priority)
         # Multi-intent/context: always update context if 'my name is ...' is present
