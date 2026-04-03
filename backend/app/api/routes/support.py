@@ -2,7 +2,9 @@ from fastapi import APIRouter, HTTPException, Query
 import traceback
 from app.services.support_service import SupportService
 from app.services.session_service import SessionService
+
 from app.models.common import SupportSubmitRequest, SupportSubmitResponse
+from app.services.chat_service import ChatService
 
 router = APIRouter()
 support_service = SupportService()
@@ -50,6 +52,7 @@ async def submit_support_request(request: SupportSubmitRequest):
         except Exception as e:
             print(f"[Support] Failed to get chat summary: {e}", flush=True)
 
+
         result = await support_service.handle_fallback_escalation(
             session_id=request.session_id,
             user_message=request.user_message,
@@ -59,6 +62,21 @@ async def submit_support_request(request: SupportSubmitRequest):
             chat_summary=chat_summary,
             source=request.source or "rag_fallback",
         )
+
+        # --- INCREMENT SUPPORT REQUEST COUNT ONLY AFTER ACTUAL SUBMISSION ---
+        chat_service = ChatService()
+        # Debug: print support_request_count before
+        context_before = await chat_service.message_service.redis_session.get_context(request.session_id)
+        print(f"[Support] Before increment: support_request_count = {context_before.get('support_request_count', 0)} for session_key={request.session_id}", flush=True)
+        await chat_service._mark_support_submitted(
+            session_key=request.session_id,
+            email=request.user_email,
+            ticket_id=str(result.get("request_id")) if result.get("request_id") else None,
+            status="open"
+        )
+        # Debug: print support_request_count after
+        context_after = await chat_service.message_service.redis_session.get_context(request.session_id)
+        print(f"[Support] After increment: support_request_count = {context_after.get('support_request_count', 0)} for session_key={request.session_id}", flush=True)
 
         # Set support state in Redis to prevent repeat submissions
         await redis_session.set_support_state(

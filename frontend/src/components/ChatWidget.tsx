@@ -172,6 +172,13 @@ const ChatWidget = () => {
     }
     setIsLoading(true);
     try {
+      // Debug: log outgoing payload
+      console.log("[ChatWidget] Sending to API:", {
+        message: userText,
+        session_id: sessionId,
+        language: lang,
+        ...extraPayload,
+      });
       const res = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -184,6 +191,9 @@ const ChatWidget = () => {
       });
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       const data = await res.json();
+
+      // Debug: log API response
+      console.log("[ChatWidget] API response:", data);
 
       // Always show bot answer as chat bubble
       setMessages((prev) => [
@@ -201,8 +211,9 @@ const ChatWidget = () => {
         return;
       }
 
-      // Show support form if both flags are true
-      if (data.requires_email === true && data.show_support_options === true) {
+      // Show support form if requires_email is true (regardless of show_support_options)
+      if (data.requires_email === true) {
+        console.log("[ChatWidget] requires_email is true, opening support popup");
         setShowRecontactConfirmation(false);
         setPendingRecontactMsg(null);
         setPendingRecontactData(null);
@@ -333,9 +344,18 @@ const ChatWidget = () => {
     // Language dropdown state
     const [showLangDropdown, setShowLangDropdown] = useState(false);
 
-    // Feedback handler stub
+    // Feedback handler with Unsatisfied escalation logic
     const handleFeedback = (messageId: string, type: string) => {
       setFeedbackMap((prev) => ({ ...prev, [messageId]: type }));
+      if (type === "negative") {
+        // Debug: log Unsatisfied click
+        console.log("[ChatWidget] Unsatisfied (Not Satisfied) clicked for messageId:", messageId);
+        // Send escalation payload
+        sendToApi("unsatisfied", { unsatisfied_click: true });
+      } else if (type === "positive") {
+        // Show rating window for Satisfied
+        setShowSessionRating(true);
+      }
     };
 
     // Session rating submit stub
@@ -343,6 +363,10 @@ const ChatWidget = () => {
       setShowSessionRating(false);
       setSessionRating(0);
       setSupportComment("");
+      setMessages((prev) => [
+        ...prev,
+        { text: i.feedback_thank_you || (lang === 'es' ? '¡Gracias por tus comentarios!' : 'Thank you for your feedback!'), isUser: false, time: getTime() },
+      ]);
     };
 
     return (

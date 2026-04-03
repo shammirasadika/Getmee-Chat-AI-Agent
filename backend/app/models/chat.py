@@ -5,6 +5,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., example="How can I reset my password?")
     session_id: str = Field(..., example="abc123")
     language: Optional[str] = Field(None, example="en")
+    unsatisfied_click: Optional[bool] = False
     recontact_confirmed: bool = False
     recontact_declined: bool = False
 
