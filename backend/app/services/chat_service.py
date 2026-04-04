@@ -603,13 +603,32 @@ class ChatService:
         retrieval_language = self.selected_language
         fallback_used = False
 
-        # 1. Direct email detection
+        # 1. Email detection and validation (always check if input looks like an email)
         email_pattern = r"[\w.\-+]+@[\w.\-]+\.\w+"
         email_match = re.search(email_pattern, request.message)
         support_context = await self._get_support_context(session_key)
         lang = request.language or "en"
         max_support_requests = 2  # Enforced by _is_support_limit_reached
         reescalation_intent = self._detect_reescalation_intent(request.message)
+        # Always validate if input contains '@' and is not a valid email
+        if ("@" in request.message and not email_match):
+            return ChatResponse(
+                answer="It seems like you have entered an invalid email address. Please enter a valid email address if you would like to proceed.",
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+                prefilled_email=None,
+                support_comment_enabled=False,
+                show_support_options=False,
+                allow_recontact=False,
+                show_recontact_confirmation=False,
+                support_submit_label=None,
+            )
 
 
         # --- CENTRALIZED SUPPORT LIMIT LOGIC ---
@@ -874,7 +893,19 @@ class ChatService:
             ctx["user_name"] = name
             await self.message_service.redis_session.set_context(session_key, ctx)
             lang = request.language or 'en'
-            nice_msg = STATIC_RESPONSES[lang]["nice_to_meet_you"] if lang in STATIC_RESPONSES and "nice_to_meet_you" in STATIC_RESPONSES[lang] else "Nice to meet you!"
+            # Add user's name to the nice to meet you message
+            if lang in STATIC_RESPONSES and "nice_to_meet_you" in STATIC_RESPONSES[lang]:
+                base_nice = STATIC_RESPONSES[lang]["nice_to_meet_you"]
+            else:
+                base_nice = "Nice to meet you!"
+            # Insert name if available
+            if name:
+                if lang == 'es':
+                    nice_msg = f"{base_nice} {name}!"
+                else:
+                    nice_msg = f"{base_nice} {name}!"
+            else:
+                nice_msg = base_nice
             await self.message_service.redis_session.push_message(session_key, {"role": "user", "text": request.message, "language": lang})
             await self.message_service.redis_session.push_message(session_key, {"role": "bot", "text": nice_msg, "language": lang})
             return ChatResponse(
