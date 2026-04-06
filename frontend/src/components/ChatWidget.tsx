@@ -221,7 +221,7 @@ const ChatWidget = () => {
         setRecontactJustHandled(false);
         setSupportEmail(data.prefilled_email || "");
         setSupportSubmitLabel(data.support_submit_label || i.submit);
-        setSupportPopupMessage(data.answer || i.emailPrompt);
+        setSupportPopupMessage(data.support_popup_message || i.emailPrompt);
         setSupportComment("");
         setShowSupportForm(true);
         setLastFallbackMessage(userText);

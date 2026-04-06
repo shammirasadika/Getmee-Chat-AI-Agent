@@ -47,6 +47,23 @@ import uuid
 
 
 class ChatService:
+    def _contains_support_keywords(self, answer: str) -> bool:
+        keywords = [
+            "contact support",
+            "support team",
+            "support staff",
+            "staff assistant",
+            "further support",
+            "further assistance",
+            "help desk",
+            "reach out to our support",
+            "contact our support",
+            "contact our staff",
+            "contact assistance",
+            "support for further assistance",
+        ]
+        answer_lower = answer.lower()
+        return any(kw in answer_lower for kw in keywords)
     def _get_unsatisfied_support_prompt(self, language: str) -> str:
         messages = {
             "en": "Please provide your email address so our support team can contact you.",
@@ -1083,6 +1100,11 @@ class ChatService:
         await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": answer})
 
         print(f"[Chat] DONE — fallback_used={fallback_used}, retrieval_language={retrieval_language}", flush=True)
+        trigger_support = self._contains_support_keywords(answer)
+        # Only set a generic support popup message if triggering support via keyword detection (not fallback or other flows)
+        support_popup_message = None
+        if trigger_support:
+            support_popup_message = "Please describe your issue for our support team."
         return ChatResponse(
             answer=answer,
             language=request.language,
@@ -1092,6 +1114,14 @@ class ChatService:
             message_id=str(bot_msg["id"]),
             session_uuid=str(session_uuid),
             show_feedback=True,
+            requires_email=trigger_support,
+            support_submit_label=None,
+            prefilled_email=None,
+            support_comment_enabled=None,
+            show_support_options=False,
+            show_recontact_confirmation=False,
+            # Only add this field if relevant
+            **({"support_popup_message": support_popup_message} if support_popup_message else {})
         )
 
     async def handle_escalation(self, request):
