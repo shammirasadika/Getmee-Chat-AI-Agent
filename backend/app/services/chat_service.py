@@ -939,44 +939,60 @@ class ChatService:
 
         # ...existing logic follows (question intent, RAG, fallback, etc)...
 
-        # DEBUG LOGGING START
-        print("------ DEBUG START ------")
-        print("User Query:", request.message)
-        processed_query = request.message  # If you have a processed/normalized version, use it here
-        print("Processed Query:", processed_query)
-        # Retrieve raw docs and scores if available
-        # If your retrieval returns docs and scores separately, use them; otherwise, print what you have
-        try:
-            docs = retrieved.get('documents', [])
-            flat_docs = [doc for chunk in docs for doc in chunk]
-            print("Retrieved Docs:")
-            for i, doc in enumerate(flat_docs):
-                print(f"{i+1}.", doc)
-        except Exception as e:
-            print("[DEBUG] Could not print docs:", e)
-        try:
-            scores = retrieved.get('distances', [[]])[0] if 'distances' in retrieved else []
-            print("Scores:", scores)
-            print("Top Score:", scores[0] if scores else None)
-        except Exception as e:
-            print("[DEBUG] Could not print scores:", e)
-        # Fallback flag will be set after fallback logic, so print a placeholder here
-        print("Fallback Triggered: (see below for actual flag)")
-        print("------ DEBUG END ------")
 
         retrieved, relevant_chunks, primary_distance, primary_confidence = await self._attempt_retrieval(
             request.message, request.message, self.selected_language, "PRIMARY"
         )
 
-        # 3. Fallback if primary has no relevant chunks OR primary is weak (low confidence)
-        primary_is_weak = relevant_chunks and primary_confidence < MIN_PRIMARY_CONFIDENCE
+        # --- STRICTER SEMANTIC RELEVANCE VALIDATION (do not change other logic) ---
+        def _has_pronoun(text):
+            # Simple check for common English possessive pronouns (expand as needed)
+            pronouns = ["my", "our", "your"]
+            text_l = text.lower()
+            return any(f" {p} " in f" {text_l} " for p in pronouns)
+
+        def _direct_entity_match(query, chunk):
+            # Entity match: at least one non-pronoun, non-stopword token from query appears in chunk
+            # (very basic, not NER)
+            import string
+            stopwords = set(["my", "our", "your", "the", "a", "an", "is", "are", "who", "what", "where", "when", "how", "which", "of", "to", "in", "on", "for", "with", "and", "or", "by", "at", "from"])
+            query_tokens = [w.strip(string.punctuation).lower() for w in query.split() if w.strip(string.punctuation).lower() not in stopwords and len(w.strip(string.punctuation)) > 1]
+            chunk_l = chunk.lower()
+            return any(qt in chunk_l for qt in query_tokens)
+
+        def _is_semantically_relevant(chunk, query, max_overlap):
+            # 1. If chunk is very short and overlap is weak, not relevant
+            if len(chunk.strip()) < 25 and max_overlap < 0.5:
+                return False
+            # 2. If max_overlap is low, not relevant
+            if max_overlap < 0.3:
+                return False
+            # 3. If query has pronouns and no direct entity match, not relevant
+            if _has_pronoun(query) and not _direct_entity_match(query, chunk):
+                return False
+            # 4. If chunk only matches a single word or acronym, not relevant (very basic: chunk is just a word/acronym)
+            if len(chunk.strip().split()) <= 2 and max_overlap < 0.7:
+                return False
+            return True
+
+        # Apply stricter validation to all relevant_chunks
+        if relevant_chunks:
+            filtered_chunks = []
+            for c in relevant_chunks:
+                if _is_semantically_relevant(c, request.message, primary_confidence):
+                    filtered_chunks.append(c)
+            if not filtered_chunks:
+                print("[Chat] Stricter semantic validation: No relevant chunks after filtering", flush=True)
+            relevant_chunks = filtered_chunks
+
+
+        # 3. Fallback if primary has no relevant chunks OR primary confidence is low (tightened logic)
+        primary_is_weak = (not relevant_chunks or primary_confidence < MIN_PRIMARY_CONFIDENCE)
         if primary_is_weak:
             print(
-                f"[Chat] Step 3: Primary has chunks but LOW confidence ({primary_confidence:.2f} < {MIN_PRIMARY_CONFIDENCE}) "
-                f" attempting fallback to find stronger match",
+                f"[Chat] Step 3: No relevant or weak chunks (confidence={primary_confidence:.2f} < {MIN_PRIMARY_CONFIDENCE}) — attempting fallback if possible",
                 flush=True
             )
-        if not relevant_chunks or primary_is_weak:
             fallback_lang = self.language_service.get_fallback_language(self.selected_language)
             print(f"[Chat] Step 3: Attempting fallback in '{fallback_lang}'...", flush=True)
             if fallback_lang != self.selected_language:
@@ -992,92 +1008,55 @@ class ChatService:
                     )
                     # Use fallback if: primary had nothing, OR fallback is stronger than weak primary
                     use_fallback = False
-                    if fb_chunks:
-                        if not relevant_chunks:
-                            use_fallback = True
-                            print(f"[Chat] Fallback fills empty primary", flush=True)
-                        elif primary_is_weak and fb_confidence > primary_confidence:
-                            use_fallback = True
-                            print(
-                                f"[Chat] Fallback confidence ({fb_confidence:.2f}) > weak primary ({primary_confidence:.2f})",
-                                flush=True
-                            )
-                        elif primary_is_weak:
-                            print(
-                                f"[Chat] Fallback not stronger ({fb_confidence:.2f} vs {primary_confidence:.2f}) — keeping weak primary",
-                                flush=True
-                            )
+                    if fb_chunks and (fb_confidence >= MIN_PRIMARY_CONFIDENCE):
+                        use_fallback = True
+                        print(f"[Chat] Fallback fills empty or weak primary with strong fallback", flush=True)
                     if use_fallback:
                         relevant_chunks = fb_chunks
                         retrieved = fb_retrieved
                         retrieval_language = fallback_lang
                         fallback_used = True
                         print(f"[Chat] Fallback SUCCESS — using '{fallback_lang}' results ({len(fb_chunks)} relevant chunks)", flush=True)
-                    elif not fb_chunks:
-                        print(f"[Chat] Fallback also has no relevant chunks in '{fallback_lang}'", flush=True)
+                    elif not fb_chunks or fb_confidence < MIN_PRIMARY_CONFIDENCE:
+                        print(f"[Chat] Fallback also has no relevant or strong chunks in '{fallback_lang}'", flush=True)
                 except Exception as e:
                     print(f"[Chat] Fallback error: {e}", flush=True)
             else:
                 print(f"[Chat] No fallback language available", flush=True)
 
-        # 4. If no relevant context in either language — strict fallback (NO LLM generation)
-        if not relevant_chunks:
-            print(f"[Chat] Step 4: No relevant chunks — returning strict fallback message (LLM skipped)", flush=True)
-            lang = request.language or "en"
-            support_context = await self._get_support_context(session_key)
-            reescalation_intent = self._detect_reescalation_intent(request.message)
-            max_support_requests = 2
-
-            if support_context.get("support_request_sent"):
-                # Only allow confirmation via explicit frontend action, not message text
-                fallback_message = self._get_repeat_escalation_message(lang)
-                requires_email = False
-                show_support_options = False
-                support_comment_enabled = False
-                prefilled_email = support_context.get("support_email")
-                allow_recontact = True if support_context.get("support_request_count", 0) < max_support_requests else False
-                show_recontact_confirmation = False
-            else:
-                fallback_message = self._get_first_support_prompt(lang)
-                requires_email = True
-                show_support_options = True
-                support_comment_enabled = True
-                prefilled_email = None
-                allow_recontact = False
-
+        # FINAL SAFETY CHECK — DO NOT REMOVE
+        if not relevant_chunks or primary_confidence < MIN_PRIMARY_CONFIDENCE:
+            print("[Chat] FINAL GUARD: Weak or no chunks — skipping LLM", flush=True)
+            fallback_message = "I couldn’t find relevant information to answer your question. Please contact our support team for further assistance."
             bot_msg = await self.message_service.save_bot_message(
-                session_id=session_uuid,
-                session_key=session_key,
-                text=fallback_message,
-                language=lang,
-                fallback_used=True,
-                source_type="fallback",
+                session_id=session_uuid, session_key=session_key,
+                text=fallback_message, language=request.language,
+                fallback_used=True, source_type="fallback",
             )
-
-            await self.session_service.save_turn(
-                request.session_id,
-                {"user": request.message, "bot": fallback_message}
-            )
-
+            await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": fallback_message})
             return ChatResponse(
                 answer=fallback_message,
-                language=lang,
+                language=request.language,
                 sources=[],
                 fallback_used=True,
-                requires_email=requires_email,
                 retrieval_language=retrieval_language,
                 message_id=str(bot_msg["id"]),
                 session_uuid=str(session_uuid),
                 show_feedback=True,
-                show_support_options=show_support_options,
-                support_comment_enabled=support_comment_enabled,
-                prefilled_email=prefilled_email,
-                allow_recontact=allow_recontact,
-                show_recontact_confirmation=show_recontact_confirmation,
+                requires_email=True,
+                support_submit_label=None,
+                prefilled_email=None,
+                support_comment_enabled=True,
+                show_support_options=True,
+                allow_recontact=False,
+                show_recontact_confirmation=False,
             )
 
+
+        # Remove duplicate fallback/no-answer blocks after the final guard. Only the strict guard above controls the no-answer flow.
         sources = [{"text": doc[:200]} for doc in relevant_chunks]
 
+        # If relevant chunks exist, keep current flow exactly as it is
         # 5. Build prompt
         prompt = self.prompt_service.build_prompt(request.message, [relevant_chunks], request.language)
 
