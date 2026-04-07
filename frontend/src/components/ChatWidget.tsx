@@ -157,6 +157,7 @@ const ChatWidget = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const inFlightFeedbackRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
