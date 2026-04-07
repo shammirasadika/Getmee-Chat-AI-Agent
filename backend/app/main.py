@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import chat, feedback, escalation, health, support
+from app.api.routes import chat, feedback, health, support
 
 app = FastAPI(
     title="GetMee Chatbot Backend",
@@ -22,7 +22,6 @@ app.add_middleware(
 # Include API routers
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(feedback.router, prefix="/api/feedback", tags=["feedback"])
-app.include_router(escalation.router, prefix="/api/escalation", tags=["escalation"])
 app.include_router(support.router, prefix="/api/support", tags=["support"])
 app.include_router(health.router, prefix="/api/health", tags=["health"])
 

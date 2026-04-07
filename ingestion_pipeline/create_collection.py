@@ -14,5 +14,3 @@ client = chromadb.HttpClient(
 collection = client.get_or_create_collection(
     name=collection_name
 )
-
-print(f"Collection '{collection_name}' created or retrieved.")

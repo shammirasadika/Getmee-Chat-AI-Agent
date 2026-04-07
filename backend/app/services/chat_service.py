@@ -58,11 +58,265 @@ from app.clients.postgres_client import PostgresClient
 from app.core.config import settings
 from app.models.chat import ChatRequest, ChatResponse
 from app.utils.helpers import clean_context_chunk, is_meaningful_chunk, filter_relevant_chunks, is_language_clean, MIN_PRIMARY_CONFIDENCE
-import uuid
 import re
+import uuid
+
 
 
 class ChatService:
+    FEEDBACK_INTERVAL = 3  # Configurable interval for per-message feedback
+    OVERALL_RATING_INTERVAL = 3  # Configurable interval for overall session rating popup
+    def _contains_support_keywords(self, answer: str) -> bool:
+        keywords = [
+            "contact support",
+            "support team",
+            "support staff",
+            "staff assistant",
+            "further support",
+            "further assistance",
+            "help desk",
+            "reach out to our support",
+            "contact our support",
+            "contact our staff",
+            "contact assistance",
+            "support for further assistance",
+        ]
+        answer_lower = answer.lower()
+        return any(kw in answer_lower for kw in keywords)
+    def _get_unsatisfied_support_prompt(self, language: str) -> str:
+        messages = {
+            "en": "Please provide your email address so our support team can contact you.",
+            "es": "Por favor, proporciona tu correo electrónico para que nuestro equipo de soporte pueda contactarte."
+        }
+        return messages.get(language, messages["en"])
+    async def _prepare_new_support_submission(self, session_key: str):
+        """
+        Reset the per-submission guard so the next actual submission increments support_request_count.
+        Call this before opening a new support submission popup.
+        """
+        context = await self.message_service.redis_session.get_context(session_key)
+        context = context or {}
+        context["_support_counted_this_submission"] = False
+        await self.message_service.redis_session.set_context(session_key, context)
+    def _is_support_limit_reached(self, support_context: dict) -> bool:
+        return support_context.get("support_request_count", 0) >= 2
+
+    def _get_unsatisfied_limit_message(self, language: str) -> str:
+        messages = {
+            "en": "You’ve already contacted our support team. Please be patient — a team member will assist you soon.",
+            "es": "Ya has contactado a nuestro equipo de soporte. Por favor, ten paciencia — un miembro del equipo te ayudará pronto."
+        }
+        return messages.get(language, messages["en"])
+
+    def _get_direct_support_limit_message(self, language: str) -> str:
+        messages = {
+            "en": "You have reached the maximum number of support requests. Please be patient — a team member will contact you soon.",
+            "es": "Has alcanzado el número máximo de solicitudes de soporte. Por favor, ten paciencia — un miembro del equipo se pondrá en contacto contigo pronto."
+        }
+        return messages.get(language, messages["en"])
+
+    def _detect_reescalation_intent(self, message: str) -> bool:
+        msg = message.strip().lower()
+        phrases = [
+            # English
+            "i need staff support",
+            "i need to contact human",
+            "i need human support",
+            "i still need help",
+            "still need help",
+            "contact support again",
+            "my issue is not solved",
+            "no one contacted me",
+            "escalate again",
+            "open another ticket",
+            # Spanish
+            "necesito ayuda del personal",
+            "necesito contactar a un humano",
+            "necesito soporte humano",
+            "todavía necesito ayuda",
+            "contactar soporte otra vez",
+            "mi problema no está resuelto",
+            "nadie me contactó",
+        ]
+        return any(p in msg for p in phrases)
+
+    def _get_recontact_confirmation_message(self, language: str) -> str:
+        messages = {
+            "en": "Your enquiry has already been submitted for this session. Do you want to contact human support again?",
+            "es": "Tu consulta ya ha sido enviada para esta sesión. ¿Quieres contactar soporte humano de nuevo?"
+        }
+        return messages.get(language, messages["en"])
+
+    async def _get_support_context(self, session_key: str) -> dict:
+        """
+        Get support-related state from Redis context.
+        """
+        context = await self.message_service.redis_session.get_context(session_key)
+        context = context or {}
+        return {
+            "support_request_sent": context.get("support_request_sent", False),
+            "support_email": context.get("support_email"),
+            "support_ticket_id": context.get("support_ticket_id"),
+            "support_status": context.get("support_status"),
+            "support_request_count": context.get("support_request_count", 0),
+            "recontact_confirmation_shown": context.get("recontact_confirmation_shown", False),
+        }
+
+    async def _mark_support_submitted(
+        self,
+        session_key: str,
+        email: str,
+        ticket_id: str = None,
+        status: str = "open"
+    ) -> None:
+        """
+        Mark support escalation as submitted in Redis context.
+        Only increment support_request_count after actual submission (not on confirmation).
+        """
+        context = await self.message_service.redis_session.get_context(session_key)
+        context = context or {}
+        context["support_request_sent"] = True
+        context["support_email"] = email
+        context["support_ticket_id"] = ticket_id or str(uuid.uuid4())
+        context["support_status"] = status
+        # Only increment if not already incremented for this submission
+        if not context.get("_support_counted_this_submission", False):
+            context["support_request_count"] = context.get("support_request_count", 0) + 1
+            context["_support_counted_this_submission"] = True
+        await self.message_service.redis_session.set_context(session_key, context)
+
+    async def _clear_support_state(self, session_key: str) -> None:
+        """
+        Optional helper if you want to reset support state later.
+        """
+        context = await self.message_service.redis_session.get_context(session_key)
+        context = context or {}
+        context["support_request_sent"] = False
+        context["support_email"] = None
+        context["support_ticket_id"] = None
+        context["support_status"] = None
+        await self.message_service.redis_session.set_context(session_key, context)
+
+    def _get_repeat_escalation_message(self, language: str) -> str:
+        messages = {
+            "en": "Your enquiry has already been submitted. A team member will contact you soon.",
+            "es": "Tu consulta ya ha sido enviada. Un miembro del equipo se pondrá en contacto contigo pronto."
+        }
+        return messages.get(language, messages["en"])
+
+    def _get_email_received_message(self, language: str) -> str:
+        messages = {
+            "en": "Thanks! I’ve received your email. Please describe your issue below so our support team can assist you.",
+            "es": "¡Gracias! Hemos recibido tu correo electrónico. Por favor describe tu problema a continuación para que nuestro equipo de soporte pueda ayudarte."
+        }
+        return messages.get(language, messages["en"])
+
+    def _get_first_support_prompt(self, language: str) -> str:
+        messages = {
+            "en": (
+                "I couldn’t find a relevant answer to your question. "
+                "Your enquiry can be forwarded to our support team. "
+                "Please provide your email address so a team member can contact you."
+            ),
+            "es": (
+                "No pude encontrar una respuesta relevante a tu pregunta. "
+                "Tu consulta puede ser enviada a nuestro equipo de soporte. "
+                "Por favor, proporciona tu correo electrónico para que un miembro del equipo pueda contactarte."
+            ),
+        }
+        return messages.get(language, messages["en"])
+    async def _handle_follow_up_message(self, message: str, session_key: str, language: str) -> str:
+        """
+        Detect and answer follow-up memory questions about recent conversation history.
+        Reads from Redis message history (session:{session_key}:messages).
+        Returns a direct answer string if matched, else None.
+        """
+        # Normalize message
+        msg = message.strip().lower()
+        # English and Spanish patterns
+        user_last_patterns = [
+            # English
+            "what did i just say", "what did i say", "repeat my last message", "repeat my last user message",
+            # Spanish
+            "qué acabo de decir", "qué dije", "repite mi último mensaje", "repite mi último mensaje de usuario"
+        ]
+        user_prev_patterns = [
+            # English
+            "what did i say before that", "what did i say earlier", "what did i say before",
+            # Spanish
+            "qué dije antes", "qué dije antes de eso", "qué dije anteriormente"
+        ]
+        bot_last_patterns = [
+            # English
+            "what did you just say", "repeat your last message", "what was your last reply", "repeat your last response",
+            # Spanish
+            "qué acabas de decir", "repite tu último mensaje", "cuál fue tu última respuesta", "repite tu última respuesta"
+        ]
+        # Fuzzy match: allow for small variations (e.g., ignore punctuation, allow extra words)
+        def match_any(phrases):
+            for p in phrases:
+                if p in msg:
+                    return True
+            return False
+        # Get recent messages from Redis
+        recent_messages = await self.message_service.redis_session.get_messages(session_key)
+        if not recent_messages:
+            recent_messages = []
+        # Helper: get last/previous user/bot message (excluding current)
+        def get_last_message(role, skip=0):
+            count = 0
+            for m in reversed(recent_messages):
+                if m.get("role") == role:
+                    if count == skip:
+                        return m.get("text")
+                    count += 1
+            return None
+        # A. Last user message (excluding current)
+        if match_any(user_last_patterns):
+            # The most recent user message before the current one
+            # Assume the current message is not yet in history, so skip=0 is last user message
+            last_user = get_last_message("user", skip=0)
+            if last_user:
+                if language == "es":
+                    return f"Acabas de decir: '{last_user}'."
+                return f"You just said: '{last_user}'."
+            else:
+                if language == "es":
+                    return "No tengo tu mensaje anterior."
+                return "I don’t have your previous message."
+        # B. Previous user message before that
+        if match_any(user_prev_patterns):
+            # The user message before the last one (skip=1)
+            prev_user = get_last_message("user", skip=1)
+            if prev_user:
+                if language == "es":
+                    return f"Antes de eso, dijiste: '{prev_user}'."
+                return f"Before that, you said: '{prev_user}'."
+            else:
+                if language == "es":
+                    return "No tengo tu mensaje anterior."
+                return "I don’t have your previous message."
+        # C. Last bot message
+        if match_any(bot_last_patterns):
+            last_bot = get_last_message("bot", skip=0)
+            if last_bot:
+                if language == "es":
+                    return f"Dije: '{last_bot}'."
+                return f"I said: '{last_bot}'."
+            else:
+                if language == "es":
+                    return "No tengo mi respuesta anterior."
+                return "I don’t have my previous response."
+        return None
+    async def get_support_submission_state(self, session_key: str):
+        """Return support submission state from Redis for the current session."""
+        support_state = await self.message_service.redis_session.get_support_state(session_key)
+        context = await self.message_service.redis_session.get_context(session_key)
+        return {
+            "support_request_sent": (context or {}).get("support_request_sent", False),
+            "support_email": (context or {}).get("support_email"),
+            "support_state": support_state,
+        }
     BOT_NAME = "Getmee Chatbot"
     _NAME_CONTINUATION_STOPWORDS = {
         "and", "but", "because", "so", "that", "please", "thanks", "thank",
@@ -126,24 +380,26 @@ class ChatService:
 
     def _detect_context_update(self, message: str) -> str:
         """
-        Extract the user's name from natural English introductions.
-        Returns the first matched name, or None if not found.
+        Extracts the user's name from the message if present.
+        Supports 'my name is ...', 'i am ...', and "i'm ..." patterns anywhere in the message.
+        Returns the first matched name (multi-word, up to punctuation or end), or None if not found.
         """
-        name_patterns = [
-            r"\bmy name is\s+([A-Za-z][A-Za-z' -]{0,48})",
-            r"\bmy name\s+([A-Za-z][A-Za-z' -]{0,48})",
-            r"\bi am\s+([A-Za-z][A-Za-z' -]{0,48})",
-            r"\bi'm\s+([A-Za-z][A-Za-z' -]{0,48})",
-            r"\bits\s+([A-Za-z][A-Za-z' -]{0,48})",
-            r"\bit's\s+([A-Za-z][A-Za-z' -]{0,48})",
-            r"\bthis is\s+([A-Za-z][A-Za-z' -]{0,48})",
-            r"\b([A-Za-z][A-Za-z' -]{0,48})\s+here\b",
+        # Allow Unicode letters, apostrophes, hyphens, spaces; stop at punctuation or line end
+        patterns = [
+            r"\bmy name is\s+([\w'\- ]{1,100})",
+            r"\bi am\s+([\w'\- ]{1,100})",
+            r"\bi'm\s+([\w'\- ]{1,100})"
         ]
-        for pattern in name_patterns:
-            match = re.search(pattern, message, re.IGNORECASE)
+        from app.utils.helpers import NAME_DETECTION_STOPWORDS
+        stopwords = NAME_DETECTION_STOPWORDS
+        for pat in patterns:
+            match = re.search(pat, message, re.IGNORECASE | re.UNICODE)
             if match:
-                name = self._normalize_detected_name(match.group(1))
-                if name:
+                name = match.group(1).strip()
+                name = re.split(r'[.,!?;:\n\r]', name)[0].strip()
+                # Split into words, ignore if more than 2 words or contains stopwords
+                words = [w for w in name.split() if w]
+                if 0 < len(words) <= 2 and not any(w.lower() in stopwords for w in words):
                     return name
         return None
 
@@ -370,21 +626,31 @@ class ChatService:
         # Try to get user_name from Redis context
         if "what is my name" in msg:
             ctx = await self.message_service.redis_session.get_context(session_key)
+            print(f"[DEBUG] Redis context for session_key={session_key}: {ctx}")
             user_name = ctx.get("user_name") if ctx else None
             lang = target_language or language or 'en'
-            if user_name:
-                answer = STATIC_RESPONSES[lang]['your_name_is'].format(name=user_name)
-            else:
-                answer = STATIC_RESPONSES[lang]['no_name']
+       
+            # Fallback to 'en' if lang not in STATIC_RESPONSES
+            if lang not in STATIC_RESPONSES:              
+                lang = 'en'
+            if user_name:              
+                answer = STATIC_RESPONSES[lang].get('your_name_is', "Your name is {name}.").format(name=user_name)
+            else:             
+                answer = STATIC_RESPONSES[lang].get('no_name', "I don’t have your name yet.")
+            #print(f"[DEBUG] what is my name? user_name={user_name}, lang={lang}, answer={answer}")
             return ChatResponse(
                 answer=answer,
                 language=lang,
                 sources=[],
                 fallback_used=False,
+                requires_email=False,
                 retrieval_language=lang,
                 message_id=None,
                 session_uuid=str(session_uuid),
                 show_feedback=False,
+                show_support_options=False,
+                prefilled_email=None,
+                support_comment_enabled=None,
             )
         # ...existing code...
         return None
@@ -452,7 +718,39 @@ class ChatService:
         return retrieved, relevant, best_distance, max_overlap
 
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
-        # Always set the selected language for this request
+        # Bot name Q&A (e.g., 'what is your name?')
+        msg = request.message.strip().lower()
+        bot_name_phrases = [
+            "what is your name",
+            "who are you",
+            "your name",
+            "cómo te llamas",
+            "cual es tu nombre",
+            "quién eres"
+        ]
+        if any(phrase in msg for phrase in bot_name_phrases):
+            print("[Chat] Bot name Q&A triggered", flush=True)
+            lang = getattr(self, 'selected_language', None) or request.language or 'en'
+            bot_name = getattr(self, 'BOT_NAME', 'Getmee Chatbot')
+            # Ensure session_uuid is available, fallback to 'unknown' if not
+            session_uuid_str = str(locals().get('session_uuid', 'unknown'))
+            if lang == 'es':
+                answer = f"Me llamo {bot_name}."
+            else:
+                answer = f"My name is {bot_name}."
+            return ChatResponse(
+                answer=answer,
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=session_uuid_str,
+                show_feedback=False,
+            )
+
+        import re
         self.selected_language = request.language or 'en'
         print(f"[Chat] Incoming request.language: {request.language}", flush=True)
 
@@ -461,339 +759,394 @@ class ChatService:
         session = await self.session_service.get_or_create_session(session_key, request.language)
         session_uuid = session["id"]  # PG UUID
 
-        # 0a. Email handling: no auto-save when multiple emails are found.
-        language = request.language or self.language_service.detect_language(request.message)
-        lang = language if language in STATIC_RESPONSES else 'en'
-        ctx = await self.message_service.redis_session.get_context(session_key)
-        pending_candidates = (ctx or {}).get("pending_email_candidates")
-
-        if pending_candidates:
-            await self.message_service.save_user_message(
-                session_id=session_uuid, session_key=session_key,
-                text=request.message, language=lang,
-            )
-            selected_email = self._resolve_selected_email(request.message, pending_candidates)
-            if not selected_email:
-                return ChatResponse(
-                    answer=STATIC_RESPONSES[lang]['email_pick_invalid'].format(
-                        emails=self._format_email_candidates(pending_candidates)
-                    ),
-                    language=lang,
-                    sources=[],
-                    fallback_used=False,
-                    retrieval_language=lang,
-                    message_id=None,
-                    session_uuid=str(session_uuid),
-                    show_feedback=False,
-                )
-
-            if not self._is_valid_email(selected_email):
-                return ChatResponse(
-                    answer=STATIC_RESPONSES[lang]['email_invalid'],
-                    language=lang,
-                    sources=[],
-                    fallback_used=False,
-                    retrieval_language=lang,
-                    message_id=None,
-                    session_uuid=str(session_uuid),
-                    show_feedback=False,
-                )
-
-            stored = await self._store_user_email(session_key, session_uuid, selected_email)
-            if stored:
-                await self.message_service.redis_session.update_context(session_key, pending_email_candidates=None)
-                return ChatResponse(
-                    answer=STATIC_RESPONSES[lang]['email_saved'].format(email=selected_email),
-                    language=lang,
-                    sources=[],
-                    fallback_used=False,
-                    retrieval_language=lang,
-                    message_id=None,
-                    session_uuid=str(session_uuid),
-                    show_feedback=False,
-                )
-
-            return ChatResponse(
-                answer=STATIC_RESPONSES[lang]['email_save_failed'],
-                language=lang,
-                sources=[],
-                fallback_used=False,
-                retrieval_language=lang,
-                message_id=None,
-                session_uuid=str(session_uuid),
-                show_feedback=False,
-            )
-
-        detected_emails = self._extract_emails_from_message(request.message)
-        if len(detected_emails) > 1:
-            await self.message_service.save_user_message(
-                session_id=session_uuid, session_key=session_key,
-                text=request.message, language=lang,
-            )
-            await self.message_service.redis_session.update_context(
-                session_key,
-                pending_email_candidates=detected_emails,
-            )
-            return ChatResponse(
-                answer=STATIC_RESPONSES[lang]['email_multiple_found'].format(
-                    emails=self._format_email_candidates(detected_emails)
-                ),
-                language=lang,
-                sources=[],
-                fallback_used=False,
-                retrieval_language=lang,
-                message_id=None,
-                session_uuid=str(session_uuid),
-                show_feedback=False,
-            )
-
-        if len(detected_emails) == 1:
-            await self.message_service.save_user_message(
-                session_id=session_uuid, session_key=session_key,
-                text=request.message, language=lang,
-            )
-            email = detected_emails[0]
-            if not self._is_valid_email(email):
-                return ChatResponse(
-                    answer=STATIC_RESPONSES[lang]['email_invalid'],
-                    language=lang,
-                    sources=[],
-                    fallback_used=False,
-                    retrieval_language=lang,
-                    message_id=None,
-                    session_uuid=str(session_uuid),
-                    show_feedback=False,
-                )
-
-            stored = await self._store_user_email(session_key, session_uuid, email)
-            if stored:
-                return ChatResponse(
-                    answer=STATIC_RESPONSES[lang]['email_saved'].format(email=email),
-                    language=lang,
-                    sources=[],
-                    fallback_used=False,
-                    retrieval_language=lang,
-                    message_id=None,
-                    session_uuid=str(session_uuid),
-                    show_feedback=False,
-                )
-
-            return ChatResponse(
-                answer=STATIC_RESPONSES[lang]['email_save_failed'],
-                language=lang,
-                sources=[],
-                fallback_used=False,
-                retrieval_language=lang,
-                message_id=None,
-                session_uuid=str(session_uuid),
-                show_feedback=False,
-            )
-
-        if self._looks_like_email_attempt(request.message):
-            await self.message_service.save_user_message(
-                session_id=session_uuid, session_key=session_key,
-                text=request.message, language=lang,
-            )
-            return ChatResponse(
-                answer=STATIC_RESPONSES[lang]['email_invalid'],
-                language=lang,
-                sources=[],
-                fallback_used=False,
-                retrieval_language=lang,
-                message_id=None,
-                session_uuid=str(session_uuid),
-                show_feedback=False,
-            )
-
-        # 1. Question intent detection (takes priority)
-        # Multi-intent/context: always update context if 'my name is ...' is present
-        name_update = self._detect_context_update(request.message)
-        if name_update:
-            await self.message_service.redis_session.update_context(session_key, user_name=name_update)
-        # Check for both bot name and user name questions in the same message
-        msg_lower = request.message.strip().lower()
-        lang = request.language or 'en'
-        responses = []
-        # Bot name intent
-        bot_name_intent = any(
-            phrase in msg_lower
-            for phrase in [
-                "what is your name",
-                "who are you",
-                "your name",
-                "cómo te llamas",
-                "cual es tu nombre",
-                "quién eres"
-            ]
+        # Save user message to chat_messages table
+        user_msg = await self.message_service.save_user_message(
+            session_id=session_uuid,
+            session_key=session_key,
+            text=request.message,
+            language=request.language
         )
-        if bot_name_intent:
-            responses.append(STATIC_RESPONSES[lang].get('bot_intro', STATIC_RESPONSES[lang]['bot_name']).format(bot_name=self.BOT_NAME))
-        # User name intent
-        user_name_intent = "what is my name" in msg_lower
-        if user_name_intent:
-            ctx = await self.message_service.redis_session.get_context(session_key)
-            user_name = ctx.get("user_name") if ctx else None
-            if user_name:
-                responses.append(STATIC_RESPONSES[lang]['your_name_is'].format(name=user_name))
-            else:
-                responses.append(STATIC_RESPONSES[lang]['no_name'])
-        if responses:
-            await self.message_service.save_user_message(
-                session_id=session_uuid, session_key=session_key,
-                text=request.message, language=lang,
-            )
-            print(f"[Chat] Final answer language: {lang}", flush=True)
-            return ChatResponse(
-                answer="\n".join(responses),
-                language=lang,
-                sources=[],
-                fallback_used=False,
-                retrieval_language=lang,
-                message_id=None,
-                session_uuid=str(session_uuid),
-                show_feedback=False,
-            )
-        # Fallback to original logic for other cases
-        q_intent = self._detect_question_intent(request.message)
-        if isinstance(q_intent, str):
-            await self.message_service.save_user_message(
-                session_id=session_uuid, session_key=session_key,
-                text=request.message, language=lang,
-            )
-            print(f"[Chat] Final answer language: {lang}", flush=True)
-            return ChatResponse(
-                answer=q_intent,
-                language=lang,
-                sources=[],
-                fallback_used=False,
-                retrieval_language=lang,
-                message_id=None,
-                session_uuid=str(session_uuid),
-                show_feedback=False,
-            )
-        elif q_intent:
-            # 1a. Context update detection (no RAG, no fallback)
-            name_update = self._detect_context_update(request.message)
-            if name_update:
-                language = request.language or self.language_service.detect_language(request.message)
-                # Store name in Redis context (as user_name)
-                await self.message_service.redis_session.update_context(session_key, user_name=name_update)
-                await self.message_service.save_user_message(
-                    session_id=session_uuid, session_key=session_key,
-                    text=request.message, language=language,
-                )
-                lang = request.language or 'en'
-                print(f"[Chat] Final answer language: {lang}", flush=True)
-                named_greeting = STATIC_RESPONSES[lang].get('nice_to_meet_you_named')
-                return ChatResponse(
-                    answer=(named_greeting.format(name=name_update) if named_greeting else STATIC_RESPONSES[lang]['nice_to_meet_you']),
-                    language=lang,
-                    sources=[],
-                    fallback_used=False,
-                    retrieval_language=lang,
-                    message_id=None,
-                    session_uuid=str(session_uuid),
-                    show_feedback=False,
-                )
-            # 1b. Session context question (from Redis)
-            recent_messages = []
-            try:
-                recent_messages = await self.message_service.redis_session.get_messages(session_key)
-            except Exception:
-                pass
-            msg = request.message.strip().lower()
-            language = request.language or self.language_service.detect_language(request.message)
-            session_context_answer = await self._get_session_context_answer(msg, session_key, language, session_uuid, request.message, target_language=request.language)
-            if session_context_answer:
-                await self.message_service.save_user_message(
-                    session_id=session_uuid, session_key=session_key,
-                    text=request.message, language=language,
-                )
-                print(f"[Chat] Final answer language: {language}", flush=True)
-                return session_context_answer
-        else:
-            # 2. Small-talk/low-intent detection (only if not a question)
-            small_talk_resp = self._detect_small_talk(request.message) or self._detect_low_intent(request.message)
-            if small_talk_resp:
-                # Always translate small talk/greeting to the dropdown-selected language (even if already in that language)
-                answer = small_talk_resp
-                try:
-                    answer = await self.llm_client.translate(answer, target_language=request.language)
-                except Exception as e:
-                    print(f"[Chat] Small talk translation error: {e}", flush=True)
-                await self.message_service.save_user_message(
-                    session_id=session_uuid, session_key=session_key,
-                    text=request.message, language=request.language,
-                )
-                print(f"[Chat] Final answer language: {request.language}", flush=True)
-                return ChatResponse(
-                    answer=answer,
-                    language=request.language,
-                    sources=[],
-                    fallback_used=False,
-                    retrieval_language=request.language,
-                    message_id=None,
-                    session_uuid=str(session_uuid),
-                    show_feedback=False,
-                )
 
-        # 3. Context update detection (no RAG, no fallback)
-        name_update = self._detect_context_update(request.message)
-        if name_update:
-            language = request.language or self.language_service.detect_language(request.message)
-            named_greeting = STATIC_RESPONSES[language].get('nice_to_meet_you_named')
-            answer = named_greeting.format(name=name_update) if named_greeting else STATIC_RESPONSES[language]['nice_to_meet_you']
-            # Store name in Redis context (as user_name)
-            await self.message_service.redis_session.update_context(session_key, user_name=name_update)
-            await self.message_service.save_user_message(
-                session_id=session_uuid, session_key=session_key,
-                text=request.message, language=language,
-            )
-            print(f"[Chat] Final answer language: {language}", flush=True)
-            return ChatResponse(
-                answer=answer,
-                language=language,
-                sources=[],
-                fallback_used=False,
-                retrieval_language=language,
-                message_id=None,
-                session_uuid=str(session_uuid),
-                show_feedback=False,
-            )
-
-        # 4. Proceed as before: Save user message to PG + Redis, then RAG
-
-        # 5. Proceed as before: Save user message to PG + Redis
-        language = request.language or self.language_service.detect_language(request.message)
-        lang_name = self.language_service.get_language_name(language)
-        retrieval_language = language
+        # Ensure retrieval_language and fallback_used are always initialized
+        retrieval_language = self.selected_language
         fallback_used = False
 
-        print(f"[Chat] User language: {language} ({lang_name}) | Query: '{request.message[:80]}'", flush=True)
+        # 1. Email detection and validation (always check if input looks like an email)
+        email_pattern = r"[\w.\-+]+@[\w.\-]+\.\w+"
+        email_match = re.search(email_pattern, request.message)
+        support_context = await self._get_support_context(session_key)
+        lang = request.language or "en"
+        max_support_requests = 2  # Enforced by _is_support_limit_reached
+        reescalation_intent = self._detect_reescalation_intent(request.message)
+        # Always validate if input contains '@' and is not a valid email
+        if ("@" in request.message and not email_match):
+            return ChatResponse(
+                answer="It seems like you have entered an invalid email address. Please enter a valid email address if you would like to proceed.",
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+                prefilled_email=None,
+                support_comment_enabled=False,
+                show_support_options=False,
+                allow_recontact=False,
+                show_recontact_confirmation=False,
+                support_submit_label=None,
+            )
 
-        user_msg = await self.message_service.save_user_message(
-            session_id=session_uuid, session_key=session_key,
-            text=request.message, language=language,
-        )
 
-        # 2. Primary retrieval
-        print(f"[Chat] Step 2: Primary retrieval in '{language}'...", flush=True)
+        # --- CENTRALIZED SUPPORT LIMIT LOGIC ---
+        # 1. Unsatisfied click (frontend should set a flag or special message, e.g. request.unsatisfied_click)
+        if hasattr(request, 'unsatisfied_click') and getattr(request, 'unsatisfied_click', False):
+            if self._is_support_limit_reached(support_context):
+                print("[DEBUG] Support limit reached. Returning requires_email=False")
+                return ChatResponse(
+                    answer=self._get_unsatisfied_limit_message(lang),
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                    prefilled_email=None,
+                    support_comment_enabled=False,
+                    show_support_options=False,
+                    allow_recontact=False,
+                    show_recontact_confirmation=False,
+                    support_submit_label=None,
+                )
+            # Below limit: allow popup (reset guard before opening popup)
+            await self._prepare_new_support_submission(session_key)
+            print("[DEBUG] Support limit NOT reached. Returning requires_email=True, prefilled_email=", support_context.get("support_email"))
+            # Determine if this is first escalation or re-escalation
+            support_count = support_context.get("support_request_count", 0)
+            if support_count == 0:
+                submit_label = "Contact Support"
+            else:
+                submit_label = "Contact again"
+            response = ChatResponse(
+                answer=self._get_unsatisfied_support_prompt(lang),
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=True,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+                prefilled_email=support_context.get("support_email"),
+                support_comment_enabled=True,
+                show_support_options=True,
+                allow_recontact=False,
+                show_recontact_confirmation=False,
+                support_submit_label=submit_label,
+            )
+            print("[DEBUG] Unsatisfied branch response:", response)
+            return response
+
+        # 2. Explicit recontact confirmation (user clicked Yes to recontact)
+        if hasattr(request, 'recontact_confirmed') and getattr(request, 'recontact_confirmed', False):
+            if self._is_support_limit_reached(support_context):
+                return ChatResponse(
+                    answer=self._get_direct_support_limit_message(lang),
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                    prefilled_email=None,
+                    support_comment_enabled=False,
+                    show_support_options=False,
+                    allow_recontact=False,
+                    show_recontact_confirmation=False,
+                    support_submit_label=None,
+                )
+            # Below limit: allow second escalation (reset guard before opening popup)
+            await self._prepare_new_support_submission(session_key)
+            return ChatResponse(
+                answer=self._get_email_received_message(lang),
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=True,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+                prefilled_email=support_context.get("support_email"),
+                support_comment_enabled=True,
+                show_support_options=True,
+                allow_recontact=False,
+                show_recontact_confirmation=False,
+                support_submit_label="Contact again",
+            )
+
+        # 3. Direct email / human support / re-escalation intent (not confirmation dialog)
+        if email_match or reescalation_intent:
+            if self._is_support_limit_reached(support_context):
+                return ChatResponse(
+                    answer=self._get_direct_support_limit_message(lang),
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                    prefilled_email=None,
+                    support_comment_enabled=False,
+                    show_support_options=False,
+                    allow_recontact=False,
+                    show_recontact_confirmation=False,
+                    support_submit_label=None,
+                )
+            # Below limit: allow normal escalation flow (reset guard before opening popup)
+            if email_match and not support_context.get("support_request_sent"):
+                detected_email = email_match.group(0)
+                await self._prepare_new_support_submission(session_key)
+                await self.session_service.update_session_email(session_key, detected_email)
+                localized_msg = self._get_email_received_message(lang)
+                await self.message_service.redis_session.push_message(
+                    session_key,
+                    {"role": "user", "text": request.message, "language": lang}
+                )
+                await self.message_service.redis_session.push_message(
+                    session_key,
+                    {"role": "bot", "text": localized_msg, "language": lang}
+                )
+                return ChatResponse(
+                    answer=localized_msg,
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=True,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                    prefilled_email=detected_email,
+                    support_comment_enabled=True,
+                    show_support_options=True,
+                    allow_recontact=False,
+                    show_recontact_confirmation=False,
+                    support_submit_label=None,
+                )
+            # If support already submitted, show confirmation dialog
+            if support_context.get("support_request_sent"):
+                confirmation_msg = {
+                    "en": "Your request has already been submitted to human support for this session. Do you want to contact support again?",
+                    "es": "Tu consulta ya fue enviada al soporte humano en esta sesión. ¿Quieres contactar al soporte nuevamente?"
+                }.get(lang, self._get_recontact_confirmation_message(lang))
+                return ChatResponse(
+                    answer=confirmation_msg,
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                    prefilled_email=support_context.get("support_email"),
+                    support_comment_enabled=False,
+                    show_support_options=False,
+                    allow_recontact=True,
+                    show_recontact_confirmation=True,
+                    support_submit_label=None,
+                )
+
+        # 3. Handle recontact_declined (user clicked No)
+        if hasattr(request, 'recontact_declined') and getattr(request, 'recontact_declined', False):
+            return ChatResponse(
+                answer="Okay, let us know if you need anything else.",
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=True,
+                prefilled_email=None,
+                support_comment_enabled=False,
+                show_support_options=False,
+                allow_recontact=False,
+                show_recontact_confirmation=False,
+                support_submit_label=None,
+            )
+
+        # 2. Support intent detection (if any, not shown in this excerpt)
+        # ...existing support intent logic if present...
+
+        # 3. Small talk detection
+        small_talk = self._detect_small_talk(request.message)
+        if small_talk:
+            lang = request.language or 'en'
+            await self.message_service.redis_session.push_message(session_key, {"role": "user", "text": request.message, "language": lang})
+            await self.message_service.redis_session.push_message(session_key, {"role": "bot", "text": small_talk, "language": lang})
+            return ChatResponse(
+                answer=small_talk,
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
+
+        # 4. Low intent detection
+        low_intent = self._detect_low_intent(request.message)
+        if low_intent:
+            lang = request.language or 'en'
+            await self.message_service.redis_session.push_message(session_key, {"role": "user", "text": request.message, "language": lang})
+            await self.message_service.redis_session.push_message(session_key, {"role": "bot", "text": low_intent, "language": lang})
+            return ChatResponse(
+                answer=low_intent,
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
+
+        # 5. Follow-up message handling (new logic)
+        follow_up_answer = await self._handle_follow_up_message(request.message, session_key, self.selected_language)
+        if follow_up_answer is not None:
+            lang = request.language or 'en'
+            await self.message_service.redis_session.push_message(session_key, {"role": "user", "text": request.message, "language": lang})
+            await self.message_service.redis_session.push_message(session_key, {"role": "bot", "text": follow_up_answer, "language": lang})
+            return ChatResponse(
+                answer=follow_up_answer,
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
+
+        # 6. Bot identity Q&A (already handled above)
+
+        # 7. Context Q&A (e.g., 'what is my name?')
+        context_answer = await self._get_session_context_answer(request.message, session_key, self.selected_language, session_uuid, request.message)
+        if context_answer:
+            # Save user message and bot reply to Redis
+            lang = request.language or 'en'
+            await self.message_service.redis_session.push_message(session_key, {"role": "user", "text": request.message, "language": lang})
+            await self.message_service.redis_session.push_message(session_key, {"role": "bot", "text": context_answer.answer, "language": lang})
+            return context_answer
+
+        # 8. Name/context update detection
+        name = self._detect_context_update(request.message)
+        if name:
+            ctx = await self.message_service.redis_session.get_context(session_key)
+            ctx = ctx or {}
+            ctx["user_name"] = name
+            await self.message_service.redis_session.set_context(session_key, ctx)
+            lang = request.language or 'en'
+            # Add user's name to the nice to meet you message
+            if lang in STATIC_RESPONSES and "nice_to_meet_you" in STATIC_RESPONSES[lang]:
+                base_nice = STATIC_RESPONSES[lang]["nice_to_meet_you"]
+            else:
+                base_nice = "Nice to meet you!"
+            # Insert name if available
+            if name:
+                if lang == 'es':
+                    nice_msg = f"{base_nice} {name}!"
+                else:
+                    nice_msg = f"{base_nice} {name}!"
+            else:
+                nice_msg = base_nice
+            await self.message_service.redis_session.push_message(session_key, {"role": "user", "text": request.message, "language": lang})
+            await self.message_service.redis_session.push_message(session_key, {"role": "bot", "text": nice_msg, "language": lang})
+            return ChatResponse(
+                answer=nice_msg,
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
+
+        # ...existing logic follows (question intent, RAG, fallback, etc)...
+
+
         retrieved, relevant_chunks, primary_distance, primary_confidence = await self._attempt_retrieval(
-            request.message, request.message, language, "PRIMARY"
+            request.message, request.message, self.selected_language, "PRIMARY"
         )
 
-        # 3. Fallback if primary has no relevant chunks OR primary is weak (low confidence)
-        primary_is_weak = relevant_chunks and primary_confidence < MIN_PRIMARY_CONFIDENCE
+        # --- STRICTER SEMANTIC RELEVANCE VALIDATION (do not change other logic) ---
+        def _has_pronoun(text):
+            # Simple check for common English possessive pronouns (expand as needed)
+            pronouns = ["my", "our", "your"]
+            text_l = text.lower()
+            return any(f" {p} " in f" {text_l} " for p in pronouns)
+
+        def _direct_entity_match(query, chunk):
+            # Entity match: at least one non-pronoun, non-stopword token from query appears in chunk
+            # (very basic, not NER)
+            import string
+            stopwords = set(["my", "our", "your", "the", "a", "an", "is", "are", "who", "what", "where", "when", "how", "which", "of", "to", "in", "on", "for", "with", "and", "or", "by", "at", "from"])
+            query_tokens = [w.strip(string.punctuation).lower() for w in query.split() if w.strip(string.punctuation).lower() not in stopwords and len(w.strip(string.punctuation)) > 1]
+            chunk_l = chunk.lower()
+            return any(qt in chunk_l for qt in query_tokens)
+
+        def _is_semantically_relevant(chunk, query, max_overlap):
+            # 1. If chunk is very short and overlap is weak, not relevant
+            if len(chunk.strip()) < 25 and max_overlap < 0.5:
+                return False
+            # 2. If max_overlap is low, not relevant
+            if max_overlap < 0.3:
+                return False
+            # 3. If query has pronouns and no direct entity match, not relevant
+            if _has_pronoun(query) and not _direct_entity_match(query, chunk):
+                return False
+            # 4. If chunk only matches a single word or acronym, not relevant (very basic: chunk is just a word/acronym)
+            if len(chunk.strip().split()) <= 2 and max_overlap < 0.7:
+                return False
+            return True
+
+        # Apply stricter validation to all relevant_chunks
+        if relevant_chunks:
+            filtered_chunks = []
+            for c in relevant_chunks:
+                if _is_semantically_relevant(c, request.message, primary_confidence):
+                    filtered_chunks.append(c)
+            if not filtered_chunks:
+                print("[Chat] Stricter semantic validation: No relevant chunks after filtering", flush=True)
+            relevant_chunks = filtered_chunks
+
+
+        # 3. Fallback if primary has no relevant chunks OR primary confidence is low (tightened logic)
+        primary_is_weak = (not relevant_chunks or primary_confidence < MIN_PRIMARY_CONFIDENCE)
         if primary_is_weak:
             print(
-                f"[Chat] Step 3: Primary has chunks but LOW confidence ({primary_confidence:.2f} < {MIN_PRIMARY_CONFIDENCE}) "
-                f"— attempting fallback to find stronger match",
+                f"[Chat] Step 3: No relevant or weak chunks (confidence={primary_confidence:.2f} < {MIN_PRIMARY_CONFIDENCE}) — attempting fallback if possible",
                 flush=True
             )
-        if not relevant_chunks or primary_is_weak:
-            fallback_lang = self.language_service.get_fallback_language(language)
+            fallback_lang = self.language_service.get_fallback_language(self.selected_language)
             print(f"[Chat] Step 3: Attempting fallback in '{fallback_lang}'...", flush=True)
-            if fallback_lang != language:
+            if fallback_lang != self.selected_language:
                 fallback_lang_name = self.language_service.get_language_name(fallback_lang)
                 try:
                     translated_query = await self.llm_client.translate(
@@ -806,68 +1159,55 @@ class ChatService:
                     )
                     # Use fallback if: primary had nothing, OR fallback is stronger than weak primary
                     use_fallback = False
-                    if fb_chunks:
-                        if not relevant_chunks:
-                            use_fallback = True
-                            print(f"[Chat] Fallback fills empty primary", flush=True)
-                        elif primary_is_weak and fb_confidence > primary_confidence:
-                            use_fallback = True
-                            print(
-                                f"[Chat] Fallback confidence ({fb_confidence:.2f}) > weak primary ({primary_confidence:.2f})",
-                                flush=True
-                            )
-                        elif primary_is_weak:
-                            print(
-                                f"[Chat] Fallback not stronger ({fb_confidence:.2f} vs {primary_confidence:.2f}) — keeping weak primary",
-                                flush=True
-                            )
+                    if fb_chunks and (fb_confidence >= MIN_PRIMARY_CONFIDENCE):
+                        use_fallback = True
+                        print(f"[Chat] Fallback fills empty or weak primary with strong fallback", flush=True)
                     if use_fallback:
                         relevant_chunks = fb_chunks
                         retrieved = fb_retrieved
                         retrieval_language = fallback_lang
                         fallback_used = True
                         print(f"[Chat] Fallback SUCCESS — using '{fallback_lang}' results ({len(fb_chunks)} relevant chunks)", flush=True)
-                    elif not fb_chunks:
-                        print(f"[Chat] Fallback also has no relevant chunks in '{fallback_lang}'", flush=True)
+                    elif not fb_chunks or fb_confidence < MIN_PRIMARY_CONFIDENCE:
+                        print(f"[Chat] Fallback also has no relevant or strong chunks in '{fallback_lang}'", flush=True)
                 except Exception as e:
                     print(f"[Chat] Fallback error: {e}", flush=True)
             else:
                 print(f"[Chat] No fallback language available", flush=True)
 
-        # 4. If no relevant context in either language — strict fallback (NO LLM generation)
-        if not relevant_chunks:
-            print(f"[Chat] Step 4: No relevant chunks — returning strict fallback message (LLM skipped)", flush=True)
-            fallback_message = self.language_service.get_fallback_message(request.language)
-            # If fallback_message is not in the selected language, translate it
-            if request.language != language:
-                try:
-                    fallback_message = await self.llm_client.translate(fallback_message, target_language=request.language)
-                except Exception as e:
-                    print(f"[Chat] Fallback translation error: {e}", flush=True)
-
-            # Save bot fallback message to PG + Redis (sets feedback_state)
+        # FINAL SAFETY CHECK — DO NOT REMOVE
+        if not relevant_chunks or primary_confidence < MIN_PRIMARY_CONFIDENCE:
+            print("[Chat] FINAL GUARD: Weak or no chunks — skipping LLM", flush=True)
+            fallback_message = "I couldn’t find relevant information to answer your question. Please contact our support team for further assistance."
             bot_msg = await self.message_service.save_bot_message(
                 session_id=session_uuid, session_key=session_key,
                 text=fallback_message, language=request.language,
                 fallback_used=True, source_type="fallback",
             )
-            # Legacy turn save
             await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": fallback_message})
-
             return ChatResponse(
                 answer=fallback_message,
                 language=request.language,
                 sources=[],
                 fallback_used=True,
-                requires_email=True,
                 retrieval_language=retrieval_language,
                 message_id=str(bot_msg["id"]),
                 session_uuid=str(session_uuid),
                 show_feedback=True,
+                requires_email=True,
+                support_submit_label=None,
+                prefilled_email=None,
+                support_comment_enabled=True,
+                show_support_options=True,
+                allow_recontact=False,
+                show_recontact_confirmation=False,
             )
 
+
+        # Remove duplicate fallback/no-answer blocks after the final guard. Only the strict guard above controls the no-answer flow.
         sources = [{"text": doc[:200]} for doc in relevant_chunks]
 
+        # If relevant chunks exist, keep current flow exactly as it is
         # 5. Build prompt
         prompt = self.prompt_service.build_prompt(request.message, [relevant_chunks], request.language)
 
@@ -914,14 +1254,31 @@ class ChatService:
         # Legacy turn save
         await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": answer})
 
-        # Store this query as last_topic so follow-up confirmations can re-use it.
-        if not fallback_used:
-            try:
-                await self.message_service.redis_session.update_context(session_key, last_topic=request.message)
-            except Exception:
-                pass
+        # --- Feedback and overall rating popup logic ---
+        context = await self.message_service.redis_session.get_context(session_key) or {}
+        bot_count = context.get("bot_message_count", 0)
+        overall_count = context.get("bot_response_count", 0)
+        is_meaningful = not (
+            fallback_used
+            or self._contains_support_keywords(answer)
+            or small_talk
+            or low_intent
+        )
+        if is_meaningful:
+            bot_count += 1
+            context["bot_message_count"] = bot_count
+            overall_count += 1
+            context["bot_response_count"] = overall_count
+            await self.message_service.redis_session.set_context(session_key, context)
+        show_feedback = (bot_count % self.FEEDBACK_INTERVAL == 0) if bot_count > 0 else False
+        show_overall_rating_popup = (overall_count % self.OVERALL_RATING_INTERVAL == 0) if overall_count > 0 else False
 
-        print(f"[Chat] DONE — fallback_used={fallback_used}, retrieval_language={retrieval_language}", flush=True)
+        # Debug print removed
+        trigger_support = self._contains_support_keywords(answer)
+        # Only set a generic support popup message if triggering support via keyword detection (not fallback or other flows)
+        support_popup_message = None
+        if trigger_support:
+            support_popup_message = "Please describe your issue for our support team."
         return ChatResponse(
             answer=answer,
             language=request.language,
@@ -930,7 +1287,16 @@ class ChatService:
             retrieval_language=retrieval_language,
             message_id=str(bot_msg["id"]),
             session_uuid=str(session_uuid),
-            show_feedback=True,
+            show_feedback=show_feedback,
+            show_overall_rating_popup=show_overall_rating_popup,
+            requires_email=trigger_support,
+            support_submit_label=None,
+            prefilled_email=None,
+            support_comment_enabled=None,
+            show_support_options=False,
+            show_recontact_confirmation=False,
+            # Only add this field if relevant
+            **({"support_popup_message": support_popup_message} if support_popup_message else {})
         )
 
     async def handle_escalation(self, request):

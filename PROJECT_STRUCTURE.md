@@ -34,7 +34,6 @@ This document explains the main folders and their purposes in the Getmee-Chat-AI
 - **utilities/**: Additional helper scripts.
 
 ---
-
 ## frontend/
 - **src/**: Main source code (components, hooks, pages, etc.).
 - **widget/**: Standalone chatbot widget code.

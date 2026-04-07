@@ -15,6 +15,13 @@ from app.core.config import settings
 
 
 class SessionService:
+
+    async def update_session_email(self, session_key: str, email: str):
+        """Update the user_email for a session in the database."""
+        session = await self.get_or_create_session(session_key)
+        session_id = session["id"]
+        await self.db.update_session_email(session_id, email)
+
     def __init__(self):
         self.redis = RedisClient(settings.REDIS_URL)
         self.db = PostgresClient(settings.POSTGRES_URL)

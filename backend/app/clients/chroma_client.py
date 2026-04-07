@@ -16,7 +16,7 @@ class ChromaClient:
             results = collection.query(query_texts=[query_text], n_results=top_k)
             docs = results.get("documents", [])
             distances = results.get("distances", [])
-            print(f"[ChromaDB] Query: '{query_text[:60]}...' | Results: {len(docs[0]) if docs else 0} | Distances: {distances}", flush=True)
+            # Debug print removed
             return {
                 "documents": docs,
                 "ids": results.get("ids", []),
@@ -25,5 +25,5 @@ class ChromaClient:
                 "distances": distances
             }
         except Exception as e:
-            print(f"[ChromaDB Error] Query failed: {e}", flush=True)
+            # Debug print removed
             return {"documents": [], "ids": [], "metadatas": [], "embeddings": [], "distances": []}

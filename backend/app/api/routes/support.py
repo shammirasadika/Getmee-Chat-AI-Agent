@@ -1,13 +1,19 @@
+"""
+support.py
+
+This module contains API endpoints for direct support requests.
+Use these endpoints when a user proactively submits a support request (e.g., via a standalone support form), not tied to the feedback flow.
+
+Best practice: Keep these endpoints separate from feedback-driven escalation for clarity, unless/until both flows are identical.
+"""
 from fastapi import APIRouter, HTTPException, Query
 import traceback
 from datetime import datetime, timezone
 from app.services.support_service import SupportService
 from app.services.session_service import SessionService
-from app.services.support_ticket_service import SupportTicketService
-from app.models.common import (
-    SupportSubmitRequest, SupportSubmitResponse,
-    CreateTicketRequest, CreateTicketResponse
-)
+
+from app.models.common import SupportSubmitRequest, SupportSubmitResponse
+from app.services.chat_service import ChatService
 
 router = APIRouter()
 support_service = SupportService()
@@ -19,6 +25,27 @@ ticket_service = SupportTicketService()
 async def submit_support_request(request: SupportSubmitRequest):
     """Submit a support request after user provides their email."""
     try:
+        # --- Redis-based support state tracking and repeat submission prevention ---
+        redis_session = session_service.redis_session
+        support_state = await redis_session.get_support_state(request.session_id)
+        if support_state and support_state.get("support_request_sent"):
+            # Already submitted, block repeat
+            from app.services.chat_service import STATIC_RESPONSES
+            lang = (request.language or 'en').lower()
+            if lang not in STATIC_RESPONSES:
+                lang = 'en'
+            repeat_msg = {
+                'en': "You have already submitted a support request for this session. Our team will contact you soon.",
+                'es': "Ya has enviado una solicitud de soporte para esta sesión. Nuestro equipo te contactará pronto."
+            }
+            message = STATIC_RESPONSES[lang].get('support_repeat') \
+                if 'support_repeat' in STATIC_RESPONSES[lang] else repeat_msg[lang]
+            return SupportSubmitResponse(
+                success=False,
+                message=message,
+                request_id=None,
+            )
+
         # Build chat summary and extract fallback message from session history
         chat_summary = None
         fallback_message = None
@@ -35,6 +62,7 @@ async def submit_support_request(request: SupportSubmitRequest):
         except Exception as e:
             print(f"[Support] Failed to get chat summary: {e}", flush=True)
 
+
         result = await support_service.handle_fallback_escalation(
             session_id=request.session_id,
             user_message=request.user_message,
@@ -44,12 +72,37 @@ async def submit_support_request(request: SupportSubmitRequest):
             chat_summary=chat_summary,
             source=request.source or "rag_fallback",
         )
+
+        # --- INCREMENT SUPPORT REQUEST COUNT ONLY AFTER ACTUAL SUBMISSION ---
+        chat_service = ChatService()
+        # Debug: print support_request_count before
+        context_before = await chat_service.message_service.redis_session.get_context(request.session_id)
+        print(f"[Support] Before increment: support_request_count = {context_before.get('support_request_count', 0)} for session_key={request.session_id}", flush=True)
+        await chat_service._mark_support_submitted(
+            session_key=request.session_id,
+            email=request.user_email,
+            ticket_id=str(result.get("request_id")) if result.get("request_id") else None,
+            status="open"
+        )
+        # Debug: print support_request_count after
+        context_after = await chat_service.message_service.redis_session.get_context(request.session_id)
+        print(f"[Support] After increment: support_request_count = {context_after.get('support_request_count', 0)} for session_key={request.session_id}", flush=True)
+
+        # Set support state in Redis to prevent repeat submissions
+        await redis_session.set_support_state(
+            request.session_id,
+            not_satisfied_selected=True,
+            support_confirmation_pending=False,
+            selected_message_id=None
+        )
+        # Mark support_request_sent flag
+        await redis_session.update_context(request.session_id, support_request_sent=True, support_email=request.user_email)
+
         # Multilingual support: use STATIC_RESPONSES for success message
         from app.services.chat_service import STATIC_RESPONSES
         lang = (request.language or 'en').lower()
         if lang not in STATIC_RESPONSES:
             lang = 'en'
-        # Use the Spanish or English equivalent of the success message
         support_success_msg = {
             'en': "Thank you! A team member will contact you soon.",
             'es': "¡Gracias! Un miembro del equipo te contactará pronto."

@@ -1,3 +1,11 @@
+"""
+feedback.py
+
+This module contains API endpoints for feedback-driven support escalation.
+Use these endpoints when support escalation is triggered as part of the chat/feedback flow (e.g., user clicks 'Not Satisfied' and requests human help).
+
+Best practice: Keep these endpoints separate from direct support requests for clarity, unless/until both flows are identical.
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from app.models.feedback import (
     FeedbackRequest, FeedbackResponse,
@@ -13,18 +21,6 @@ from app.services.support_ticket_service import SupportTicketService
 import uuid as _uuid
 
 router = APIRouter()
-
-
-# ── Legacy endpoint (backwards-compatible) ───────
-
-@router.post("/", response_model=FeedbackResponse)
-async def feedback_endpoint(request: FeedbackRequest, feedback_service: FeedbackService = Depends()):
-    """Legacy: save quick thumbs-up/down to old feedback table."""
-    try:
-        response = await feedback_service.handle_feedback(request)
-        return response
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Message-level feedback  (Satisfied / Not Satisfied) ──
@@ -80,7 +76,7 @@ async def session_feedback_endpoint(
     try:
         session = await session_service.get_or_create_session(request.session_key)
         session_id = session["id"]
-        await feedback_service.submit_session_feedback(
+        row = await feedback_service.submit_session_feedback(
             session_key=request.session_key,
             session_id=session_id,
             rating=request.rating,
@@ -135,6 +131,8 @@ async def contact_support_endpoint(
     try:
         session = await session_service.get_or_create_session(request.session_key)
         session_id = session["id"]
+        # Always use string versions for all downstream calls
+        session_id_str = str(session_id) if not isinstance(session_id, str) else session_id
 
         # Derive issue summary from Redis support_state if not provided
         issue_summary = request.issue_summary or "User requested human support after unsatisfactory bot answer."
@@ -147,7 +145,7 @@ async def contact_support_endpoint(
         message_id = None
         if support_state and support_state.get("selected_message_id"):
             try:
-                message_id = _uuid.UUID(support_state["selected_message_id"])
+                message_id = str(_uuid.UUID(support_state["selected_message_id"]))
             except ValueError:
                 pass
 
@@ -155,13 +153,13 @@ async def contact_support_endpoint(
         if request.user_email:
             from app.clients.postgres_client import PostgresClient
             db = PostgresClient(_settings.POSTGRES_URL)
-            await db.update_session_email(session_id, request.user_email)
+            await db.update_session_email(session_id_str, request.user_email)
 
         # Save to support_requests for unified escalation tracking
         from app.services.support_service import SupportService
         support_service = SupportService()
         await support_service.handle_fallback_escalation(
-            session_id=session_id,
+            session_id=session_id_str,
             user_message=issue_summary,
             user_email=request.user_email or "",
             language="en",
@@ -170,7 +168,7 @@ async def contact_support_endpoint(
             source=request.source or "user_unsatisfied",
         )
         ticket = await ticket_service.create_ticket(
-            session_id=session_id,
+            session_id=session_id_str,
             session_key=request.session_key,
             issue_summary=issue_summary,
             message_id=message_id,

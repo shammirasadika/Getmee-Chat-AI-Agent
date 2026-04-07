@@ -50,6 +50,9 @@ const translations = {
     satisfied: "Satisfied",
     not_satisfied: "Not Satisfied",
     was_this_helpful: "Was this helpful?",
+    feedback_thank_you: "Thank you for your feedback!",
+    feedback_prompt: "Please rate your experience.",
+    cancel: "Cancel",
   },
   es: {
     title: "Asistente IA GetMee",
@@ -86,6 +89,9 @@ const translations = {
     satisfied: "Satisfecho",
     not_satisfied: "No satisfecho",
     was_this_helpful: "¿Fue útil?",
+    feedback_thank_you: "¡Gracias por tus comentarios!",
+    feedback_prompt: "Por favor califica tu experiencia.",
+    cancel: "Cancelar",
   },
 };
 
@@ -115,89 +121,64 @@ const TypingIndicator = () => (
   </div>
 );
 
+
 const ChatWidget = () => {
   const [lang, setLang] = useState<Language>("en");
+    // Translation object for current language
+    const i = translations[lang];
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatStarted, setChatStarted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId] = useState(generateSessionId);
 
-  // Track in-flight requests to prevent duplicate submissions
-  const inFlightFeedbackRef = useRef<Set<string>>(new Set());
-  const inFlightSessionRatingRef = useRef<boolean>(false);
-
-  // Email collection state (driven by backend requires_email flag)
-  const [showEmailInput, setShowEmailInput] = useState(false);
-  const [emailAddress, setEmailAddress] = useState("");
-  const [lastFallbackMessage, setLastFallbackMessage] = useState("");
-  const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
-
-  // Widget visibility state for minimize/close
+  // UI state
+  const [showRecontactConfirmation, setShowRecontactConfirmation] = useState(false);
+  const [pendingRecontactMsg, setPendingRecontactMsg] = useState<string|null>(null);
+  const [pendingRecontactData, setPendingRecontactData] = useState<any>(null);
+  const [recontactLoading, setRecontactLoading] = useState(false);
+  const [recontactJustHandled, setRecontactJustHandled] = useState(false);
+  const [showSupportForm, setShowSupportForm] = useState(false);
+  const [supportEmail, setSupportEmail] = useState("");
+  const [supportSubmitLabel, setSupportSubmitLabel] = useState("");
+  const [supportPopupMessage, setSupportPopupMessage] = useState("");
+  const [supportComment, setSupportComment] = useState("");
+  const [lastFallbackMessage, setLastFallbackMessage] = useState<any>(null);
+  const [showSessionRating, setShowSessionRating] = useState(false);
+  const [pendingSessionRating, setPendingSessionRating] = useState(false);
+  const [sessionRating, setSessionRating] = useState(0);
+  const [feedbackMap, setFeedbackMap] = useState<{[key: string]: string}>({});
   const [isMinimized, setIsMinimized] = useState(false);
   const [isClosed, setIsClosed] = useState(false);
-
-  // Session rating popup state
-  const [showSessionRating, setShowSessionRating] = useState(false);
-  const [sessionRating, setSessionRating] = useState(0);
-  const [sessionComment, setSessionComment] = useState("");
-  // Popup priority: defer session rating if email popup is open
-  const [pendingSessionRating, setPendingSessionRating] = useState(false);
-
-  // Submit session rating to backend — with duplicate prevention
-  const submitSessionRating = useCallback(async () => {
-    if (sessionRating < 1 || sessionRating > 5) return;
-    if (inFlightSessionRatingRef.current) {
-      console.warn("Session rating submission already in progress");
-      return;
-    }
-    inFlightSessionRatingRef.current = true;
-    try {
-      await fetch(`${API_BASE}/api/feedback/session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_key: sessionId,
-          rating: sessionRating,
-          comment: sessionComment,
-        }),
-      });
-      setShowSessionRating(false);
-      setSessionRating(0);
-      setSessionComment("");
-      setMessages((prev) => [
-        ...prev,
-        { text: i.feedback_thank_you || (lang === 'es' ? '¡Gracias por tus comentarios!' : 'Thank you for your feedback!'), isUser: false, time: getTime() },
-      ]);
-    } catch (err) {
-      console.error("Session rating error:", err);
-      setShowSessionRating(false);
-      setSessionRating(0);
-      setSessionComment("");
-      setMessages((prev) => [
-        ...prev,
-        { text: "Failed to submit session rating. Please try again later.", isUser: false, time: getTime() },
-      ]);
-    } finally {
-      inFlightSessionRatingRef.current = false;
-    }
-  }, [sessionRating, sessionComment, sessionId]);
-
-  // Feedback state: messageId -> "positive" | "negative" | "sending"
-  const [feedbackMap, setFeedbackMap] = useState<Record<string, string>>({});
+  const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
+  // For email input (legacy, if needed)
+  const [showEmailInput, setShowEmailInput] = useState(false);
+  const [emailAddress, setEmailAddress] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const i = translations[lang];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  /* ---- API: Send chat message ---- */
-  const sendToApi = async (userText: string) => {
+  const sendToApi = async (userText: string, extraPayload: any = {}) => {
+    // If this is a new user message, always reset confirmation state
+    if (!extraPayload.recontact_confirmed && !extraPayload.recontact_declined) {
+      setShowRecontactConfirmation(false);
+      setPendingRecontactMsg(null);
+      setPendingRecontactData(null);
+      setRecontactLoading(false);
+    }
     setIsLoading(true);
     try {
+      // Debug: log outgoing payload
+      console.log("[ChatWidget] Sending to API:", {
+        message: userText,
+        session_id: sessionId,
+        language: lang,
+        ...extraPayload,
+      });
       const res = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -205,33 +186,54 @@ const ChatWidget = () => {
           message: userText,
           session_id: sessionId,
           language: lang,
+          ...extraPayload,
         }),
       });
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       const data = await res.json();
 
+      // Debug: log API response
+      console.log("[ChatWidget] API response:", data);
+
+      // Always show bot answer as chat bubble
       setMessages((prev) => [
         ...prev,
         { text: data.answer, isUser: false, time: getTime(), messageId: data.message_id },
       ]);
+      setShowSessionRating(!!data.show_overall_rating_popup);
 
-      // Show email collection if backend signals fallback OR if the
-      // LLM answer indicates it couldn't find relevant information
-      const noInfoPattern = /couldn'?t find information|no information available|unable to find|don't have information|no puedo encontrar información|no tengo información/i;
-      if (data.requires_email || noInfoPattern.test(data.answer)) {
-        setShowEmailInput(true);
-        setLastFallbackMessage(userText);
+      // Handle recontact confirmation UI
+      if (data.show_recontact_confirmation && !recontactJustHandled) {
+        setShowRecontactConfirmation(true);
+        setPendingRecontactMsg(data.answer);
+        setPendingRecontactData(data);
+        setShowSupportForm(false);
+        setRecontactLoading(false);
         return;
       }
 
-      // Special-case: trigger email popup if bot response suggests contacting support
-      const supportTriggerPattern = /contact (our )?support team|further assistance|reach out to support|our team can help|contact support/i;
-      if (supportTriggerPattern.test(data.answer)) {
-        setShowEmailInput(true);
+      // Show support form if requires_email is true (regardless of show_support_options)
+      if (data.requires_email === true) {
+        console.log("[ChatWidget] requires_email is true, opening support popup");
+        setShowRecontactConfirmation(false);
+        setPendingRecontactMsg(null);
+        setPendingRecontactData(null);
+        setRecontactLoading(false);
+        setRecontactJustHandled(false);
+        setSupportEmail(data.prefilled_email || "");
+        setSupportSubmitLabel(data.support_submit_label || i.submit);
+        setSupportPopupMessage(data.support_popup_message || i.emailPrompt);
+        setSupportComment("");
+        setShowSupportForm(true);
         setLastFallbackMessage(userText);
-        // Optionally, you can store the trigger source for backend as 'bot_directed_support' if needed
-        // (e.g., by adding a hidden field or passing it in the support API call)
+        return;
       }
+      // Hide confirmation and popup if not needed
+      setShowRecontactConfirmation(false);
+      setPendingRecontactMsg(null);
+      setPendingRecontactData(null);
+      setShowSupportForm(false);
+      setRecontactJustHandled(false);
     } catch (err) {
       console.error("Chat API error:", err);
       setMessages((prev) => [
@@ -244,73 +246,6 @@ const ChatWidget = () => {
   };
 
   /* ---- API: Submit email for support escalation ---- */
-  const handleSubmitEmail = async () => {
-    if (!emailAddress.trim()) return;
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(emailAddress)) {
-      setMessages((prev) => [
-        ...prev,
-        { text: i.invalidEmail, isUser: false, time: getTime() },
-      ]);
-      return;
-    }
-
-    setIsSubmittingEmail(true);
-    try {
-      // Determine the source for support escalation
-      let source = "rag_fallback";
-      if (showSessionRating) {
-        source = "user_unsatisfied";
-      } else if (
-        isFallbackObj(lastFallbackMessage) && lastFallbackMessage._botDirectedSupport
-      ) {
-        source = "bot_directed_support";
-      } else if (
-        isFallbackObj(lastFallbackMessage) && lastFallbackMessage._source
-      ) {
-        source = lastFallbackMessage._source;
-      }
-
-      const res = await fetch(`${API_BASE}/api/support/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: sessionId,
-          user_email: emailAddress,
-          user_message: lastFallbackMessage,
-          language: lang,
-          source,
-        }),
-      });
-      if (!res.ok) throw new Error(`Support API error: ${res.status}`);
-      const data = await res.json();
-
-      setShowEmailInput(false);
-      setEmailAddress("");
-      setMessages((prev) => [
-        ...prev,
-        {
-          text: data.message || i.emailSuccess,
-          isUser: false,
-          time: getTime(),
-        },
-      ]);
-      // After closing email popup, if session rating was pending, show it now
-      if (pendingSessionRating) {
-        setShowSessionRating(true);
-        setPendingSessionRating(false);
-      }
-    } catch (err) {
-      console.error("Support API error:", err);
-      setMessages((prev) => [
-        ...prev,
-        { text: i.emailError, isUser: false, time: getTime() },
-      ]);
-    } finally {
-      setIsSubmittingEmail(false);
-    }
-  };
 
   const handleQuickQuestion = (question: string) => {
     setMessages([
@@ -341,128 +276,205 @@ const ChatWidget = () => {
     inputRef.current?.focus();
   };
 
-  const resetChat = () => {
-    setChatStarted(false);
-    setMessages([]);
-    setShowEmailInput(false);
-    setEmailAddress("");
-    setFeedbackMap({});
-  };
+    // Only one handleSubmitEmail should exist (the one using supportEmail)
+    const handleSubmitEmail = async () => {
+      if (!supportEmail.trim()) return;
 
-  /* ---- API: Submit feedback ---- */
-  const handleFeedback = useCallback(async (messageId: string, feedback: "positive" | "negative") => {
-    // Check if this message is already being processed
-    if (inFlightFeedbackRef.current.has(messageId)) {
-      console.warn(`Feedback for message ${messageId} already in flight`);
-      return;
-    }
-    if (feedbackMap[messageId]) {
-      console.warn(`Feedback for message ${messageId} already submitted`);
-      return;
-    }
-
-    // Mark this request as in-flight
-    inFlightFeedbackRef.current.add(messageId);
-    setFeedbackMap((prev) => ({ ...prev, [messageId]: "sending" }));
-
-    try {
-      // Map frontend feedback to backend expected values
-      const backendFeedback = feedback === "positive" ? "satisfied" : "not_satisfied";
-      const res = await fetch(`${API_BASE}/api/feedback/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_key: sessionId,
-          message_id: messageId,
-          feedback: backendFeedback,
-        }),
-      });
-      if (!res.ok) throw new Error(`Feedback API error: ${res.status}`);
-      const data = await res.json();
-      setFeedbackMap((prev) => ({ ...prev, [messageId]: feedback }));
-      if (data.show_support_options) {
-        setShowEmailInput(true);
-        setLastFallbackMessage("");
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(supportEmail)) {
+        setMessages((prev) => [
+          ...prev,
+          { text: i.invalidEmail, isUser: false, time: getTime() },
+        ]);
+        return;
       }
-      if (backendFeedback === "satisfied") {
-        if (showEmailInput) {
-          setPendingSessionRating(true);
-        } else {
-          setShowSessionRating(true);
+
+      setIsSubmittingEmail(true);
+      try {
+        // Determine the source for support escalation
+        let source = "rag_fallback";
+        if (showSessionRating) {
+          source = "user_unsatisfied";
+        } else if (
+          isFallbackObj(lastFallbackMessage) && lastFallbackMessage._botDirectedSupport
+        ) {
+          source = "bot_directed_support";
+        } else if (
+          isFallbackObj(lastFallbackMessage) && lastFallbackMessage._source
+        ) {
+          source = lastFallbackMessage._source;
         }
+
+        // 1. Legacy support request (support_requests table)
+        const res = await fetch(`${API_BASE}/api/support/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: sessionId,
+            user_email: supportEmail,
+            user_message: supportComment || lastFallbackMessage,
+            language: lang,
+            source,
+          }),
+        });
+        if (!res.ok) throw new Error(`Support API error: ${res.status}`);
+        const data = await res.json();
+
+        // 2. New support ticket (support_tickets table)
+        await fetch(`${API_BASE}/api/feedback/contact-support`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_key: sessionId,
+            user_email: supportEmail,
+            issue_summary: supportComment || lastFallbackMessage,
+            source,
+          }),
+        });
+
+        setShowSupportForm(false);
+        setSupportEmail("");
+        setMessages((prev) => [
+          ...prev,
+          { text: data.message || i.emailSuccess, isUser: false, time: getTime() },
+        ]);
+        setSupportComment("");
+        setSupportSubmitLabel(i.submit);
+        // After closing email popup, if session rating was pending, show it now
+        if (pendingSessionRating) {
+          setShowSessionRating(true);
+          setPendingSessionRating(false);
+        }
+      } catch (err) {
+        setMessages((prev) => [
+          ...prev,
+          { text: i.emailError, isUser: false, time: getTime() },
+        ]);
+      } finally {
+        setIsSubmittingEmail(false);
       }
-    } catch (err) {
-      console.error("Feedback error:", err);
-      setFeedbackMap((prev) => {
-        const updated = { ...prev };
-        delete updated[messageId];
-        return updated;
-      });
-    } finally {
-      // Remove from in-flight set
-      inFlightFeedbackRef.current.delete(messageId);
-    }
-  }, [feedbackMap, sessionId, showEmailInput]);
+    };
 
-  const [showLangDropdown, setShowLangDropdown] = useState(false);
+    // Language dropdown state
+    const [showLangDropdown, setShowLangDropdown] = useState(false);
 
-  return (
-    <div className="flex flex-col w-full h-screen bg-background text-foreground relative">
-      {/* Session Rating Popup — absolutely positioned above input bar */}
-      {showSessionRating && (
-        <div
-          className="absolute left-0 right-0 bottom-20 flex justify-center z-30 pointer-events-auto"
-          style={{ pointerEvents: 'auto' }}
-        >
-          <div className="w-full max-w-sm bg-gradient-to-br from-secondary to-secondary/80 rounded-2xl p-5 flex flex-col gap-3 shadow-sm border border-border/50 animate-in fade-in slide-in-from-bottom-3 duration-300">
-            <div className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <span className="text-yellow-400 text-xl">★</span>
+    // Feedback API call
+    const sendFeedback = async (messageId: string, feedbackType: "satisfied" | "not_satisfied") => {
+      try {
+        const res = await fetch(`${API_BASE}/api/feedback/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_key: sessionId,
+            message_id: messageId,
+            feedback: feedbackType,
+          }),
+        });
+        if (!res.ok) throw new Error(`Feedback API error: ${res.status}`);
+        const data = await res.json();
+        console.log("[ChatWidget] Feedback API response:", data);
+      } catch (err) {
+        console.error("[ChatWidget] Feedback API error:", err);
+      }
+    };
+
+    // Feedback handler with Unsatisfied escalation logic
+    const handleFeedback = (messageId: string, type: string) => {
+      setFeedbackMap((prev) => ({ ...prev, [messageId]: type }));
+      if (type === "negative") {
+        sendFeedback(messageId, "not_satisfied");
+        sendToApi("unsatisfied", { unsatisfied_click: true });
+      } else if (type === "positive") {
+        sendFeedback(messageId, "satisfied");
+        // Do NOT show session rating popup here; only show when backend says so
+      }
+    };
+
+    // Session feedback API call
+    const sendSessionFeedback = async (rating: number, comment: string) => {
+      try {
+        const res = await fetch(`${API_BASE}/api/feedback/session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_key: sessionId,
+            rating,
+            comment,
+          }),
+        });
+        if (!res.ok) throw new Error(`Session feedback API error: ${res.status}`);
+        const data = await res.json();
+        console.log("[ChatWidget] Session feedback API response:", data);
+      } catch (err) {
+        console.error("[ChatWidget] Session feedback API error:", err);
+      }
+    };
+
+    // Session rating submit
+    const submitSessionRating = () => {
+      sendSessionFeedback(sessionRating, supportComment);
+      setShowSessionRating(false);
+      setSessionRating(0);
+      setSupportComment("");
+      setMessages((prev) => [
+        ...prev,
+        { text: i.feedback_thank_you || (lang === 'es' ? '¡Gracias por tus comentarios!' : 'Thank you for your feedback!'), isUser: false, time: getTime() },
+      ]);
+    };
+
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col h-screen w-screen bg-background overflow-hidden">
+        {/* Session rating UI (if shown) */}
+        {showSessionRating && (
+          <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 shadow-lg w-full max-w-xs flex flex-col gap-3">
+              <div className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <span className="text-yellow-400 text-xl">★</span>
+                </div>
+                <span>{i.feedback_prompt || (lang === 'es' ? 'Por favor califica tu experiencia.' : 'Please rate your experience.')}</span>
               </div>
-              <span>{i.feedback_prompt || (lang === 'es' ? 'Por favor califica tu experiencia.' : 'Please rate your experience.')}</span>
-            </div>
-            <div className="flex gap-1 mb-2 justify-center">
-              {[1,2,3,4,5].map((star) => (
+              <div className="flex gap-1 mb-2 justify-center">
+                {[1,2,3,4,5].map((star) => (
+                  <button
+                    key={star}
+                    className={
+                      star <= sessionRating
+                        ? "text-yellow-400 text-2xl"
+                        : "text-gray-300 text-2xl"
+                    }
+                    onClick={() => setSessionRating(star)}
+                    aria-label={`Rate ${star}`}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+              <textarea
+                className="w-full border rounded p-2 mb-2 text-sm"
+                rows={2}
+                placeholder={i.optional_comment || (lang === 'es' ? 'Comentario opcional' : 'Optional comment')}
+                value={supportComment}
+                onChange={e => setSupportComment(e.target.value)}
+              />
+              <div className="flex gap-2">
                 <button
-                  key={star}
-                  className={
-                    star <= sessionRating
-                      ? "text-yellow-400 text-2xl disabled:opacity-50 disabled:cursor-not-allowed"
-                      : "text-gray-300 text-2xl disabled:opacity-50 disabled:cursor-not-allowed"
-                  }
-                  onClick={() => setSessionRating(star)}
-                  disabled={inFlightSessionRatingRef.current}
-                  aria-label={`Rate ${star}`}
+                  className="flex-1 bg-primary text-primary-foreground rounded-xl px-4 py-2.5 text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+                  onClick={submitSessionRating}
+                  disabled={sessionRating < 1 || sessionRating > 5}
                 >
-                  ★
+                  {i.submit || (lang === 'es' ? 'Enviar' : 'Submit')}
                 </button>
-              ))}
-            </div>
-            <textarea
-              className="w-full border rounded p-2 mb-2 text-sm"
-              rows={2}
-              placeholder={i.optional_comment || (lang === 'es' ? 'Comentario opcional' : 'Optional comment')}
-              value={sessionComment}
-              onChange={e => setSessionComment(e.target.value)}
-            />
-            <div className="flex gap-2">
-              <button
-                className="flex-1 bg-primary text-primary-foreground rounded-xl px-4 py-2.5 text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
-                onClick={submitSessionRating}
-                disabled={sessionRating < 1 || sessionRating > 5 || inFlightSessionRatingRef.current}
-              >
-                {i.submit || (lang === 'es' ? 'Enviar' : 'Submit')}
-              </button>
-              <button
-                className="px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-background rounded-xl transition-all border border-transparent hover:border-border"
-                onClick={() => setShowSessionRating(false)}
-              >
-                {i.cancel || (lang === 'es' ? 'Cancelar' : 'Cancel')}
-              </button>
+                <button
+                  className="px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-background rounded-xl transition-all border border-transparent hover:border-border"
+                  onClick={() => setShowSessionRating(false)}
+                >
+                  {i.cancel || (lang === 'es' ? 'Cancelar' : 'Cancel')}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
       {/* ──── Header ──── */}
       <header className="flex items-center justify-between px-3 py-3 sm:px-5 sm:py-4 shrink-0 border-b border-border bg-white">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -644,7 +656,44 @@ const ChatWidget = () => {
                     {msg.isUser ? (
                       msg.text
                     ) : (
-                      <ReactMarkdown>{msg.text}</ReactMarkdown>
+                      <>
+                        <ReactMarkdown>{msg.text}</ReactMarkdown>
+                        {/* Show Yes/No confirmation if needed */}
+                        {showRecontactConfirmation && pendingRecontactMsg === msg.text && (
+                          <div className="flex gap-3 mt-3">
+                            <button
+                              className="px-4 py-1.5 rounded-lg bg-primary text-white font-semibold hover:bg-primary/90 transition-all"
+                              onClick={async () => {
+                                if (recontactLoading) return;
+                                setRecontactLoading(true);
+                                setShowRecontactConfirmation(false);
+                                setPendingRecontactMsg(null);
+                                setPendingRecontactData(null);
+                                setRecontactJustHandled(true);
+                                await sendToApi("Contact support again", { recontact_confirmed: true });
+                              }}
+                              disabled={isLoading || recontactLoading}
+                            >
+                              Yes
+                            </button>
+                            <button
+                              className="px-4 py-1.5 rounded-lg bg-muted text-foreground font-semibold hover:bg-muted/80 border border-border transition-all"
+                              onClick={async () => {
+                                if (recontactLoading) return;
+                                setRecontactLoading(true);
+                                setShowRecontactConfirmation(false);
+                                setPendingRecontactMsg(null);
+                                setPendingRecontactData(null);
+                                setRecontactJustHandled(true);
+                                await sendToApi("No thanks", { recontact_declined: true });
+                              }}
+                              disabled={isLoading || recontactLoading}
+                            >
+                              No
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -724,23 +773,30 @@ const ChatWidget = () => {
             </div>
           )}
 
-          {/* Email collection — triggered by backend requires_email flag */}
-          {showEmailInput && (
+          {/* Support form popup — controlled by backend flags, not just chat bubble */}
+          {showSupportForm && (
             <div className="mx-auto w-full max-w-sm bg-gradient-to-br from-secondary to-secondary/80 rounded-2xl p-5 flex flex-col gap-3 shadow-sm border border-border/50 animate-in fade-in slide-in-from-bottom-3 duration-300">
               <div className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
                 <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                   <Mail size={15} className="text-primary" />
                 </div>
-                <span>{i.emailPrompt}</span>
+                <span>{supportPopupMessage}</span>
               </div>
               <input
                 type="email"
-                value={emailAddress}
-                onChange={(e) => setEmailAddress(e.target.value)}
+                value={supportEmail}
+                onChange={(e) => setSupportEmail(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSubmitEmail()}
                 placeholder={i.emailPlaceholder}
                 className="bg-background rounded-xl px-4 py-2.5 text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/50 border border-border text-sm transition-shadow"
                 autoFocus
+              />
+              <textarea
+                className="w-full border rounded p-2 mb-2 text-sm"
+                rows={2}
+                placeholder={i.optional_comment || (lang === 'es' ? 'Comentario opcional' : 'Optional comment')}
+                value={supportComment}
+                onChange={e => setSupportComment(e.target.value)}
               />
               <div className="flex gap-2">
                 <button
@@ -753,13 +809,13 @@ const ChatWidget = () => {
                   ) : (
                     <Send size={15} />
                   )}
-                  {i.submit}
+                  {supportSubmitLabel}
                 </button>
                 <button
                   onClick={() => {
-                    setShowEmailInput(false);
-                    setEmailAddress("");
-                    // If email popup is dismissed, clear pending session rating
+                    setShowSupportForm(false);
+                    setSupportEmail("");
+                    setSupportComment("");
                     if (pendingSessionRating) setPendingSessionRating(false);
                   }}
                   className="px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-background rounded-xl transition-all border border-transparent hover:border-border"
