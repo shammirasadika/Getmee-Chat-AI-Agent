@@ -673,6 +673,8 @@ class ChatService:
                 )
             # Below limit: allow popup (reset guard before opening popup)
             await self._prepare_new_support_submission(session_key)
+            # Set escalation_source in Redis for Unsatisfied escalation
+            await self.message_service.redis_session.update_context(session_key, escalation_source="Unsatisfied escalation")
             print("[DEBUG] Support limit NOT reached. Returning requires_email=True, prefilled_email=", support_context.get("support_email"))
             # Determine if this is first escalation or re-escalation
             support_count = support_context.get("support_request_count", 0)
@@ -765,6 +767,8 @@ class ChatService:
                 detected_email = email_match.group(0)
                 await self._prepare_new_support_submission(session_key)
                 await self.session_service.update_session_email(session_key, detected_email)
+                # Set escalation_source in Redis for Direct escalation
+                await self.message_service.redis_session.update_context(session_key, escalation_source="Direct escalation")
                 localized_msg = self._get_email_received_message(lang)
                 await self.message_service.redis_session.push_message(
                     session_key,
@@ -790,7 +794,9 @@ class ChatService:
                     allow_recontact=False,
                     show_recontact_confirmation=False,
                     support_submit_label=None,
+                    escalation_source="Direct escalation",
                 )
+                # If support keywords are detected and support popup is triggered, set escalation_source
             # If support already submitted, show confirmation dialog
             if support_context.get("support_request_sent"):
                 confirmation_msg = {
@@ -1035,6 +1041,8 @@ class ChatService:
                 fallback_used=True, source_type="fallback",
             )
             await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": fallback_message})
+            # Set escalation_source in Redis for Fallback escalation
+            await self.message_service.redis_session.update_context(session_key, escalation_source="Fallback escalation")
             return ChatResponse(
                 answer=fallback_message,
                 language=request.language,
@@ -1100,10 +1108,16 @@ class ChatService:
 
         # Debug print removed
         trigger_support = self._contains_support_keywords(answer)
-        # Only set a generic support popup message if triggering support via keyword detection (not fallback or other flows)
         support_popup_message = None
+        escalation_source = None
         if trigger_support:
             support_popup_message = "Please describe your issue for our support team."
+            escalation_source = "Rag escalation"
+            await self.message_service.redis_session.update_context(session_key, escalation_source=escalation_source)
+        # If the support popup is being opened for a direct user action (not fallback/unsatisfied/keyword), set escalation_source
+        if not fallback_used and not trigger_support and not (hasattr(request, 'unsatisfied_click') and getattr(request, 'unsatisfied_click', False)):
+            await self.message_service.redis_session.update_context(session_key, escalation_source="User direct request")
+            escalation_source = "User direct request"
         return ChatResponse(
             answer=answer,
             language=request.language,
@@ -1120,6 +1134,7 @@ class ChatService:
             support_comment_enabled=None,
             show_support_options=False,
             show_recontact_confirmation=False,
+            escalation_source=escalation_source,
             # Only add this field if relevant
             **({"support_popup_message": support_popup_message} if support_popup_message else {})
         )

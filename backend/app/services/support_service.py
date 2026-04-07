@@ -47,7 +47,7 @@ class SupportService:
             "chat_summary": chat_summary,
             "source": source,
         })
-        print(f"[Support] Saved support request #{request_id} for session {session_id}", flush=True)
+        print(f"[Support] Saved support request #{request_id} for session {session_id} | escalation_source={source}", flush=True)
 
         # 2. Check Redis cooldown
         cooldown_key = f"{COOLDOWN_KEY_PREFIX}{session_id}"
@@ -59,7 +59,7 @@ class SupportService:
         else:
             # 3. Send email notification
             email_sent = await self._send_support_email(
-                session_id, user_message, user_email, language, fallback_message, chat_summary
+                session_id, user_message, user_email, language, fallback_message, chat_summary, source
             )
             if email_sent:
                 # Set cooldown in Redis
@@ -77,7 +77,7 @@ class SupportService:
 
     async def _send_support_email(
         self, session_id: str, user_message: str, user_email: str,
-        language: str, fallback_message: str = None, chat_summary: str = None
+        language: str, fallback_message: str = None, chat_summary: str = None, escalation_source: str = None, direct_support: bool = False
     ) -> bool:
         """Send email notification to support team with all relevant context."""
         if not settings.SUPPORT_EMAIL:
@@ -87,14 +87,24 @@ class SupportService:
             from datetime import datetime, timezone
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
+
             subject = f"[Getmee Support] New enquiry — {user_email} (Session {session_id[:12]})"
 
-            # Build fallback answer section
-            fallback_html = ""
-            if fallback_message:
-                fallback_html = (
-                    f"<tr><td style='padding:8px 12px;font-weight:bold;vertical-align:top;'>Chatbot Response:</td>"
-                    f"<td style='padding:8px 12px;'><em>{fallback_message}</em></td></tr>"
+
+            # Always show both user question and chatbot response (even if empty)
+            user_question_html = (
+                f"<tr><td style='padding:8px 12px;font-weight:bold;vertical-align:top;'>User Issue/Comment:</td>"
+                f"<td style='padding:8px 12px;'>{user_message or '<em>(not provided)</em>'}</td></tr>"
+            )
+            chatbot_response_html = (
+                f"<tr><td style='padding:8px 12px;font-weight:bold;vertical-align:top;'>Chatbot Response:</td>"
+                f"<td style='padding:8px 12px;'>{fallback_message if fallback_message else '<em>(not available)</em>'}</td></tr>"
+            )
+            escalation_source_html = ""
+            if escalation_source:
+                escalation_source_html = (
+                    f"<tr style='background:#f0f4f8;'><td style='padding:8px 12px;font-weight:bold;'>Escalation Source:</td>"
+                    f"<td style='padding:8px 12px;'>{escalation_source}</td></tr>"
                 )
 
             # Build chat summary section
@@ -107,28 +117,34 @@ class SupportService:
                     f"{formatted_summary}</div>"
                 )
 
+            # Add direct support note if relevant
+            direct_support_html = ""
+            if direct_support:
+                direct_support_html = (
+                    f"<div style='margin:12px 0;padding:10px;background:#e7f3fe;border-left:4px solid #2196f3;'>"
+                    f"<strong>Direct Support Request:</strong> This request was submitted directly by the user, not triggered by chatbot fallback or unsatisfied feedback."
+                    f"</div>"
+                )
+
             body = (
                 f"<div style='font-family:Arial,sans-serif;max-width:600px;'>"
-                f"<h2 style='color:#d9534f;border-bottom:2px solid #d9534f;padding-bottom:8px;'>"
-                f"New Support Enquiry</h2>"
+                f"<h2 style='color:#d9534f;border-bottom:2px solid #d9534f;padding-bottom:8px;'>New Support Enquiry</h2>"
                 f"<p style='color:#666;font-size:13px;'>Received at {timestamp}</p>"
                 f"<table style='width:100%;border-collapse:collapse;margin:16px 0;'>"
-                f"<tr style='background:#f0f4f8;'>"
-                f"<td style='padding:8px 12px;font-weight:bold;width:160px;'>Session ID:</td>"
+                f"<tr style='background:#f0f4f8;'><td style='padding:8px 12px;font-weight:bold;width:160px;'>Session ID:</td>"
                 f"<td style='padding:8px 12px;'><code>{session_id}</code></td></tr>"
                 f"<tr><td style='padding:8px 12px;font-weight:bold;'>User Email:</td>"
                 f"<td style='padding:8px 12px;'><a href='mailto:{user_email}'>{user_email}</a></td></tr>"
-                f"<tr style='background:#f0f4f8;'>"
-                f"<td style='padding:8px 12px;font-weight:bold;'>Language:</td>"
+                f"<tr style='background:#f0f4f8;'><td style='padding:8px 12px;font-weight:bold;'>Language:</td>"
                 f"<td style='padding:8px 12px;'>{language}</td></tr>"
-                f"<tr><td style='padding:8px 12px;font-weight:bold;vertical-align:top;'>User Question:</td>"
-                f"<td style='padding:8px 12px;'>{user_message}</td></tr>"
-                f"{fallback_html}"
+                f"{escalation_source_html}"
+                f"{user_question_html}"
+                f"{chatbot_response_html}"
                 f"</table>"
                 f"{summary_html}"
+                f"{direct_support_html}"
                 f"<div style='margin-top:20px;padding:12px;background:#fff3cd;border:1px solid #ffc107;border-radius:4px;'>"
-                f"<strong>Action Required:</strong> The chatbot could not find a relevant answer. "
-                f"Please follow up with the user at <a href='mailto:{user_email}'>{user_email}</a>."
+                f"<strong>Action Required:</strong> Please follow up with the user at <a href='mailto:{user_email}'>{user_email}</a>."
                 f"</div>"
                 f"</div>"
             )
