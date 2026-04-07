@@ -200,6 +200,7 @@ const ChatWidget = () => {
         ...prev,
         { text: data.answer, isUser: false, time: getTime(), messageId: data.message_id },
       ]);
+      setShowSessionRating(!!data.show_overall_rating_popup);
 
       // Handle recontact confirmation UI
       if (data.show_recontact_confirmation && !recontactJustHandled) {
@@ -385,7 +386,7 @@ const ChatWidget = () => {
         sendToApi("unsatisfied", { unsatisfied_click: true });
       } else if (type === "positive") {
         sendFeedback(messageId, "satisfied");
-        setShowSessionRating(true);
+        // Do NOT show session rating popup here; only show when backend says so
       }
     };
 

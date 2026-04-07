@@ -47,6 +47,8 @@ import uuid
 
 
 class ChatService:
+    FEEDBACK_INTERVAL = 3  # Configurable interval for per-message feedback
+    OVERALL_RATING_INTERVAL = 3  # Configurable interval for overall session rating popup
     def _contains_support_keywords(self, answer: str) -> bool:
         keywords = [
             "contact support",
@@ -338,13 +340,17 @@ class ChatService:
             r"\bi am\s+([\w'\- ]{1,100})",
             r"\bi'm\s+([\w'\- ]{1,100})"
         ]
+        from app.utils.helpers import NAME_DETECTION_STOPWORDS
+        stopwords = NAME_DETECTION_STOPWORDS
         for pat in patterns:
             match = re.search(pat, message, re.IGNORECASE | re.UNICODE)
             if match:
-                # Clean up: strip trailing punctuation and whitespace, stop at first punctuation
                 name = match.group(1).strip()
                 name = re.split(r'[.,!?;:\n\r]', name)[0].strip()
-                return name if name else None
+                # Split into words, ignore if more than 2 words or contains stopwords
+                words = [w for w in name.split() if w]
+                if 0 < len(words) <= 2 and not any(w.lower() in stopwords for w in words):
+                    return name
         return None
 
     def _detect_small_talk(self, message: str) -> str:
@@ -476,20 +482,15 @@ class ChatService:
             print(f"[DEBUG] Redis context for session_key={session_key}: {ctx}")
             user_name = ctx.get("user_name") if ctx else None
             lang = target_language or language or 'en'
-            print(f"[DEBUG] Requested language: {lang}")
-            print(f"[DEBUG] STATIC_RESPONSES keys: {list(STATIC_RESPONSES.keys())}")
+       
             # Fallback to 'en' if lang not in STATIC_RESPONSES
-            if lang not in STATIC_RESPONSES:
-                print(f"[DEBUG] Language '{lang}' not in STATIC_RESPONSES, defaulting to 'en'")
+            if lang not in STATIC_RESPONSES:              
                 lang = 'en'
-            print(f"[DEBUG] Using language: {lang}")
-            if user_name:
-                print(f"[DEBUG] Found user_name: {user_name}")
+            if user_name:              
                 answer = STATIC_RESPONSES[lang].get('your_name_is', "Your name is {name}.").format(name=user_name)
-            else:
-                print(f"[DEBUG] user_name not found in context")
+            else:             
                 answer = STATIC_RESPONSES[lang].get('no_name', "I don’t have your name yet.")
-            print(f"[DEBUG] what is my name? user_name={user_name}, lang={lang}, answer={answer}")
+            #print(f"[DEBUG] what is my name? user_name={user_name}, lang={lang}, answer={answer}")
             return ChatResponse(
                 answer=answer,
                 language=lang,
@@ -1078,7 +1079,26 @@ class ChatService:
         # Legacy turn save
         await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": answer})
 
-        print(f"[Chat] DONE — fallback_used={fallback_used}, retrieval_language={retrieval_language}", flush=True)
+        # --- Feedback and overall rating popup logic ---
+        context = await self.message_service.redis_session.get_context(session_key) or {}
+        bot_count = context.get("bot_message_count", 0)
+        overall_count = context.get("bot_response_count", 0)
+        is_meaningful = not (
+            fallback_used
+            or self._contains_support_keywords(answer)
+            or small_talk
+            or low_intent
+        )
+        if is_meaningful:
+            bot_count += 1
+            context["bot_message_count"] = bot_count
+            overall_count += 1
+            context["bot_response_count"] = overall_count
+            await self.message_service.redis_session.set_context(session_key, context)
+        show_feedback = (bot_count % self.FEEDBACK_INTERVAL == 0) if bot_count > 0 else False
+        show_overall_rating_popup = (overall_count % self.OVERALL_RATING_INTERVAL == 0) if overall_count > 0 else False
+
+        # Debug print removed
         trigger_support = self._contains_support_keywords(answer)
         # Only set a generic support popup message if triggering support via keyword detection (not fallback or other flows)
         support_popup_message = None
@@ -1092,7 +1112,8 @@ class ChatService:
             retrieval_language=retrieval_language,
             message_id=str(bot_msg["id"]),
             session_uuid=str(session_uuid),
-            show_feedback=True,
+            show_feedback=show_feedback,
+            show_overall_rating_popup=show_overall_rating_popup,
             requires_email=trigger_support,
             support_submit_label=None,
             prefilled_email=None,

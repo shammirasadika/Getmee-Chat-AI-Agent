@@ -19,6 +19,7 @@ class ChatResponse(BaseModel):
     message_id: Optional[str] = None
     session_uuid: Optional[str] = None       # PG chat_sessions.id (UUID)
     show_feedback: bool = True                # whether to show Satisfied/Not Satisfied
+    show_overall_rating_popup: bool = False   # whether to show the periodic overall session rating popup
     show_support_options: bool = False        # whether to show Try Again / Contact Support
     prefilled_email: Optional[str] = None     # for direct email detection
     support_comment_enabled: Optional[bool] = None  # for direct email detection
