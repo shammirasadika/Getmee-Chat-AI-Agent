@@ -25,3 +25,4 @@ class ChatResponse(BaseModel):
     support_comment_enabled: Optional[bool] = None  # for direct email detection
     show_recontact_confirmation: bool = False       # for re-escalation confirmation step
     support_submit_label: Optional[str] = None      # for dynamic submit button text (e.g., 'Contact again')
+    escalation_source: Optional[str] = None         # backend-driven escalation source for support

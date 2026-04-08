@@ -69,14 +69,52 @@ async def submit_support_request(request: SupportSubmitRequest):
             print(f"[Support] Failed to get chat summary: {e}", flush=True)
 
 
+        # If the user_message is 'unsatisfied' or empty, try to use the last user message from chat history
+        reported_issue = request.user_message
+        if (not reported_issue or reported_issue.strip().lower() == 'unsatisfied') and history:
+            # Find the last non-empty user message in history
+            for msg in reversed(history):
+                if msg.get('user') and msg.get('user').strip().lower() != 'unsatisfied':
+                    reported_issue = msg.get('user')
+                    break
+        if not reported_issue:
+            reported_issue = '(no issue provided)'
+
+
+        # Prefer escalation_source from Redis session context, then request, then default
+        context = await redis_session.get_context(request.session_id)
+        source = None
+        if context and context.get("escalation_source"):
+            source = context["escalation_source"]
+        elif hasattr(request, "escalation_source") and request.escalation_source:
+            source = request.escalation_source
+        else:
+            source = "User direct request"
+
+        # Do not override fallback escalation to direct escalation; fallback remains fallback
+
         result = await support_service.handle_fallback_escalation(
             session_id=request.session_id,
-            user_message=request.user_message,
+            user_message=reported_issue,
             user_email=request.user_email,
             language=request.language,
             fallback_message=fallback_message,
             chat_summary=chat_summary,
-            source=request.source or "rag_fallback",
+            source=source,
+        )
+
+        # Also create a support ticket in the new table
+        from app.services.support_ticket_service import SupportTicketService
+        ticket_service = SupportTicketService()
+        # Look up the chat_sessions row by session_key to get the UUID id
+        session_row = await session_service.get_or_create_session(request.session_id)
+        uuid_session_id = session_row["id"]
+        await ticket_service.create_ticket(
+            session_id=uuid_session_id,
+            session_key=request.session_id,
+            issue_summary=reported_issue,
+            message_id=None,
+            user_email=request.user_email,
         )
 
         # --- INCREMENT SUPPORT REQUEST COUNT ONLY AFTER ACTUAL SUBMISSION ---

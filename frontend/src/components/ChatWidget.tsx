@@ -144,6 +144,7 @@ const ChatWidget = () => {
   const [supportPopupMessage, setSupportPopupMessage] = useState("");
   const [supportComment, setSupportComment] = useState("");
   const [lastFallbackMessage, setLastFallbackMessage] = useState<any>(null);
+  const [escalationSource, setEscalationSource] = useState<string | null>(null);
   const [showSessionRating, setShowSessionRating] = useState(false);
   const [pendingSessionRating, setPendingSessionRating] = useState(false);
   const [sessionRating, setSessionRating] = useState(0);
@@ -199,9 +200,14 @@ const ChatWidget = () => {
       // Always show bot answer as chat bubble
       setMessages((prev) => [
         ...prev,
-        { text: data.answer, isUser: false, time: getTime(), messageId: data.message_id },
+        { text: data.answer, isUser: false, time: getTime(), messageId: data.message_id, show_feedback: data.show_feedback },
       ]);
       setShowSessionRating(!!data.show_overall_rating_popup);
+
+      // Store escalation_source from backend if present
+      if (data.escalation_source) {
+        setEscalationSource(data.escalation_source);
+      }
 
       // Handle recontact confirmation UI
       if (data.show_recontact_confirmation && !recontactJustHandled) {
@@ -291,22 +297,9 @@ const ChatWidget = () => {
       }
 
       setIsSubmittingEmail(true);
-      try {
-        // Determine the source for support escalation
-        let source = "rag_fallback";
-        if (showSessionRating) {
-          source = "user_unsatisfied";
-        } else if (
-          isFallbackObj(lastFallbackMessage) && lastFallbackMessage._botDirectedSupport
-        ) {
-          source = "bot_directed_support";
-        } else if (
-          isFallbackObj(lastFallbackMessage) && lastFallbackMessage._source
-        ) {
-          source = lastFallbackMessage._source;
-        }
 
-        // 1. Legacy support request (support_requests table)
+      try {
+        // Relay escalation_source from backend only
         const res = await fetch(`${API_BASE}/api/support/`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -315,23 +308,13 @@ const ChatWidget = () => {
             user_email: supportEmail,
             user_message: supportComment || lastFallbackMessage,
             language: lang,
-            source,
+            escalation_source: escalationSource,
           }),
         });
         if (!res.ok) throw new Error(`Support API error: ${res.status}`);
         const data = await res.json();
 
-        // 2. New support ticket (support_tickets table)
-        await fetch(`${API_BASE}/api/feedback/contact-support`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_key: sessionId,
-            user_email: supportEmail,
-            issue_summary: supportComment || lastFallbackMessage,
-            source,
-          }),
-        });
+        // (Support ticket creation now handled by backend)
 
         setShowSupportForm(false);
         setSupportEmail("");
@@ -703,8 +686,8 @@ const ChatWidget = () => {
                 >
                   {msg.time}
                 </span>
-                {/* Feedback buttons for bot messages */}
-                {!msg.isUser && msg.messageId && (
+                {/* Feedback buttons for bot messages, only if show_feedback is true */}
+                {!msg.isUser && msg.messageId && msg.show_feedback !== false && (
                   <div className="flex items-center gap-2.5 ml-10 mt-2">
                     {feedbackMap[msg.messageId] === "sending" ? (
                       <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50 border border-border/40">
