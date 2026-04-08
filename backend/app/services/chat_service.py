@@ -51,19 +51,34 @@ class ChatService:
     # Language-agnostic intent patterns
     INTENT_PATTERNS = {
         "greeting": [
-            "hi", "hello", "hey", "hola", "buenas"
+            # English
+            "hi", "hello", "hey", "hey there", "hello there", "hi there", "good morning", "good afternoon", "good evening", "yo",
+            # Spanish
+            "hola", "hola 👋", "hola!", "buenos días", "buenas tardes", "buenas noches", "qué tal", "qué tal?", "buenas"
         ],
         "thanks": [
-            "thanks", "thank you", "thx", "gracias", "muchas gracias"
+            # English
+            "thanks", "thank you", "thx", "thanks a lot", "thank u", "tysm", "appreciate it",
+            # Spanish
+            "gracias", "gracias!", "muchas gracias", "mil gracias", "te lo agradezco"
         ],
         "acknowledgement": [
-            "ok", "okay", "got it", "sure", "alright", "vale", "de acuerdo", "entendido", "seguro"
+            # English
+            "ok", "okay", "got it", "sure", "alright", "cool", "nice", "okay thanks", "gotcha", "makes sense",
+            # Spanish
+            "vale", "de acuerdo", "entendido", "seguro", "perfecto", "está bien", "esta bien", "claro", "genial"
         ],
         "goodbye": [
-            "bye", "goodbye", "see you", "adios", "adiós", "hasta luego"
+            # English
+            "bye", "goodbye", "see you", "see ya", "later", "take care",
+            # Spanish
+            "adios", "adiós", "hasta luego", "hasta pronto", "nos vemos", "chao"
         ],
         "low_intent": [
-            "hm", "hmm", "hmmm", "mm", "mmm"
+            # English
+            "hm", "hmm", "hmmm", "mm", "mmm", "um", "uhh", "ah", "oh", "yeah", "yup", "nope", "nah",
+            # Spanish
+            "mmm", "eh", "ah", "oh", "sí", "si", "no", "nop"
         ]
     }
 
