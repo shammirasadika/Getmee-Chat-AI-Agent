@@ -199,7 +199,7 @@ const ChatWidget = () => {
       // Always show bot answer as chat bubble
       setMessages((prev) => [
         ...prev,
-        { text: data.answer, isUser: false, time: getTime(), messageId: data.message_id },
+        { text: data.answer, isUser: false, time: getTime(), messageId: data.message_id, show_feedback: data.show_feedback },
       ]);
       setShowSessionRating(!!data.show_overall_rating_popup);
 
@@ -685,8 +685,8 @@ const ChatWidget = () => {
                 >
                   {msg.time}
                 </span>
-                {/* Feedback buttons for bot messages */}
-                {!msg.isUser && msg.messageId && (
+                {/* Feedback buttons for bot messages, only if show_feedback is true */}
+                {!msg.isUser && msg.messageId && msg.show_feedback !== false && (
                   <div className="flex items-center gap-2.5 ml-10 mt-2">
                     {feedbackMap[msg.messageId] === "sending" ? (
                       <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50 border border-border/40">
