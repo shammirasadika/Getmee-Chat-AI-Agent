@@ -52,10 +52,13 @@ class ChatService:
     INTENT_PATTERNS = {
         "greeting": [
             # English
-            "hi", "hello", "hey", "hey there", "hello there", "hi there", "good morning", "good afternoon", "good evening", "yo",
+            "hi", "hello", "hey", "hey there", "hello there", "hi there", "yo",
             # Spanish
-            "hola", "hola 👋", "hola!", "buenos días", "buenas tardes", "buenas noches", "qué tal", "qué tal?", "buenas"
+            "hola", "hola 👋", "hola!", "qué tal", "qué tal?", "buenas"
         ],
+        "buenos_dias": ["good morning", "buenos días"],
+        "buenas_tardes": ["good afternoon", "buenas tardes"],
+        "buenas_noches": ["good evening", "buenas noches"],
         "thanks": [
             # English
             "thanks", "thank you", "thx", "thanks a lot", "thank u", "tysm", "appreciate it",
@@ -85,6 +88,9 @@ class ChatService:
     INTENT_RESPONSES = {
         "en": {
             "greeting": "Hello! How can I help you today?",
+            "buenos_dias": "Good morning! How can I help you today?",
+            "buenas_tardes": "Good afternoon! How can I help you today?",
+            "buenas_noches": "Good evening! How can I help you today?",
             "thanks": "You’re welcome! Let me know if you need anything else.",
             "acknowledgement": "Alright. Let me know if you need help with anything else.",
             "goodbye": "Goodbye! Feel free to come back anytime.",
@@ -92,6 +98,9 @@ class ChatService:
         },
         "es": {
             "greeting": "¡Hola! ¿En qué puedo ayudarte hoy?",
+            "buenos_dias": "¡Buenos días! ¿En qué puedo ayudarte hoy?",
+            "buenas_tardes": "¡Buenas tardes! ¿En qué puedo ayudarte hoy?",
+            "buenas_noches": "¡Buenas noches! ¿En qué puedo ayudarte hoy?",
             "thanks": "¡De nada! Avísame si necesitas algo más.",
             "acknowledgement": "De acuerdo. Avísame si necesitas ayuda con algo más.",
             "goodbye": "¡Adiós! No dudes en volver cuando quieras.",
@@ -645,7 +654,8 @@ class ChatService:
         )
 
         # Ensure retrieval_language and fallback_used are always initialized
-        retrieval_language = self.selected_language
+        # retrieval_language should always reflect the language of the retrieval attempt
+        retrieval_language = None
         fallback_used = False
 
         # 1. Email detection and validation (always check if input looks like an email)
@@ -964,99 +974,144 @@ class ChatService:
 
 
 
-        # --- Retrieval and Fallback Logic with Active Confidence ---
+
+        # --- Multilingual Retrieval Flow (fully correct) ---
+        selected_language = request.language or "en"   # UI language for answer and fallback
+        alternate_language = "es" if selected_language == "en" else "en"
+        input_language = self.language_service.detect_language(request.message)
+        retrieval_language = selected_language
+        fallback_used = False
+
+        # 1. Build primary query in selected UI language
+        if input_language == selected_language:
+            primary_query = request.message
+        else:
+            primary_query = await self.llm_client.translate(
+                request.message,
+                target_language=self.language_service.get_language_name(selected_language)
+            )
+
         retrieved, relevant_chunks, primary_distance, primary_confidence = await self._attempt_retrieval(
-            request.message, request.message, self.selected_language, "PRIMARY"
+            primary_query,
+            primary_query,
+            selected_language,
+            "PRIMARY",
+            is_cross_language=(input_language != selected_language)
         )
 
         active_confidence = primary_confidence
+        retrieval_query_for_validation = primary_query
+        retrieval_confidence_for_validation = primary_confidence
+        retrieval_language = selected_language
 
-        # --- STRICTER SEMANTIC RELEVANCE VALIDATION (do not change other logic) ---
-        def _has_pronoun(text):
-            pronouns = ["my", "our", "your"]
+        # 2. Fallback: search in alternate language if primary fails
+        if not relevant_chunks or primary_confidence < MIN_PRIMARY_CONFIDENCE:
+            if input_language == alternate_language:
+                fallback_query = request.message
+            else:
+                fallback_query = await self.llm_client.translate(
+                    request.message,
+                    target_language=self.language_service.get_language_name(alternate_language)
+                )
+            print(f"[Chat] Step 3: Attempting fallback in '{alternate_language}'...", flush=True)
+            fb_retrieved, fb_chunks, fb_distance, fb_confidence = await self._attempt_retrieval(
+                fallback_query,
+                fallback_query,
+                alternate_language,
+                "FALLBACK",
+                is_cross_language=True
+            )
+            # Accept fallback if any chunks found, regardless of confidence
+            if fb_chunks:
+                relevant_chunks = fb_chunks
+                retrieved = fb_retrieved
+                retrieval_language = alternate_language
+                fallback_used = True
+                active_confidence = fb_confidence
+                retrieval_query_for_validation = fallback_query
+                retrieval_confidence_for_validation = fb_confidence
+                print(f"[Chat] Fallback SUCCESS — using '{alternate_language}' results ({len(fb_chunks)} relevant chunks)", flush=True)
+            else:
+                print(f"[Chat] Fallback also has no relevant or strong chunks in '{alternate_language}'", flush=True)
+
+
+
+        # --- Semantic filtering (define helpers locally) ---
+
+        def _has_pronoun(text, lang):
+            if lang == "es":
+                pronouns = ["mi", "mis", "nuestro", "nuestra", "tu", "tus"]
+            else:
+                pronouns = ["my", "our", "your"]
             text_l = text.lower()
             return any(f" {p} " in f" {text_l} " for p in pronouns)
 
-        def _direct_entity_match(query, chunk):
+        def _direct_entity_match(query, chunk, lang):
             import string
-            stopwords = set(["my", "our", "your", "the", "a", "an", "is", "are", "who", "what", "where", "when", "how", "which", "of", "to", "in", "on", "for", "with", "and", "or", "by", "at", "from"])
+            if lang == "es":
+                stopwords = set(["mi", "mis", "nuestro", "nuestra", "tu", "tus", "el", "la", "los", "las", "un", "una", "unos", "unas", "es", "son", "quien", "que", "donde", "cuando", "como", "cual", "de", "a", "en", "con", "y", "o", "por", "para", "del", "al"])
+            else:
+                stopwords = set(["my", "our", "your", "the", "a", "an", "is", "are", "who", "what", "where", "when", "how", "which", "of", "to", "in", "on", "for", "with", "and", "or", "by", "at", "from"])
             query_tokens = [w.strip(string.punctuation).lower() for w in query.split() if w.strip(string.punctuation).lower() not in stopwords and len(w.strip(string.punctuation)) > 1]
             chunk_l = chunk.lower()
             return any(qt in chunk_l for qt in query_tokens)
 
+        query_lang_for_filter = self.language_service.detect_language(retrieval_query_for_validation)
         def _is_semantically_relevant(chunk, query, max_overlap):
             if len(chunk.strip()) < 25 and max_overlap < 0.5:
                 return False
             if max_overlap < 0.3:
                 return False
-            if _has_pronoun(query) and not _direct_entity_match(query, chunk):
-                return False
+            # Only apply pronoun/entity rule for English queries
+            if query_lang_for_filter == "en":
+                if _has_pronoun(query, "en") and not _direct_entity_match(query, chunk, "en"):
+                    return False
+            # For Spanish, skip this strict rule
             if len(chunk.strip().split()) <= 2 and max_overlap < 0.7:
                 return False
             return True
 
+
         if relevant_chunks:
             filtered_chunks = []
             for c in relevant_chunks:
-                if _is_semantically_relevant(c, request.message, primary_confidence):
+                if _is_semantically_relevant(c, retrieval_query_for_validation, retrieval_confidence_for_validation):
                     filtered_chunks.append(c)
             if not filtered_chunks:
                 print("[Chat] Stricter semantic validation: No relevant chunks after filtering", flush=True)
             relevant_chunks = filtered_chunks
 
-        # 3. Fallback if primary has no relevant chunks OR primary confidence is low (tightened logic)
-        primary_is_weak = (not relevant_chunks or primary_confidence < MIN_PRIMARY_CONFIDENCE)
-        if primary_is_weak:
+
+
+        # --- Final guard: only after both attempts fail ---
+        # Only fallback if both primary and fallback retrieval failed
+        if not relevant_chunks or (active_confidence < MIN_PRIMARY_CONFIDENCE and not fallback_used):
             print(
-                f"[Chat] Step 3: No relevant or weak chunks (confidence={primary_confidence:.2f} < {MIN_PRIMARY_CONFIDENCE}) — attempting fallback if possible",
+                f"[Chat] FINAL GUARD: No semantically relevant chunks after filtering (retrieval={retrieval_language}) — skipping LLM",
                 flush=True
             )
-            fallback_lang = self.language_service.get_fallback_language(self.selected_language)
-            print(f"[Chat] Step 3: Attempting fallback in '{fallback_lang}'...", flush=True)
-            if fallback_lang != self.selected_language:
-                fallback_lang_name = self.language_service.get_language_name(fallback_lang)
-                try:
-                    translated_query = await self.llm_client.translate(
-                        request.message, target_language=fallback_lang_name
-                    )
-                    print(f"[Chat] Translated query: '{translated_query[:80]}'", flush=True)
-                    fb_retrieved, fb_chunks, fb_distance, fb_confidence = await self._attempt_retrieval(
-                        translated_query, request.message, fallback_lang, "FALLBACK",
-                        is_cross_language=True
-                    )
-                    use_fallback = False
-                    if fb_chunks and (fb_confidence >= MIN_PRIMARY_CONFIDENCE):
-                        use_fallback = True
-                        print(f"[Chat] Fallback fills empty or weak primary with strong fallback", flush=True)
-                    if use_fallback:
-                        relevant_chunks = fb_chunks
-                        retrieved = fb_retrieved
-                        retrieval_language = fallback_lang
-                        fallback_used = True
-                        active_confidence = fb_confidence
-                        print(f"[Chat] Fallback SUCCESS — using '{fallback_lang}' results ({len(fb_chunks)} relevant chunks)", flush=True)
-                    elif not fb_chunks or fb_confidence < MIN_PRIMARY_CONFIDENCE:
-                        print(f"[Chat] Fallback also has no relevant or strong chunks in '{fallback_lang}'", flush=True)
-                except Exception as e:
-                    print(f"[Chat] Fallback error: {e}", flush=True)
-            else:
-                print(f"[Chat] No fallback language available", flush=True)
+            fallback_message = self._get_first_support_prompt(request.language or "en")
+            support_context = await self._get_support_context(session_key)
+            prefilled_email = support_context.get("support_email") if support_context else None
 
-        # FINAL SAFETY CHECK — DO NOT REMOVE
-        if not relevant_chunks or active_confidence < MIN_PRIMARY_CONFIDENCE:
-            print("[Chat] FINAL GUARD: Weak or no chunks — skipping LLM", flush=True)
-            fallback_messages = {
-                "en": "I couldn’t find relevant information to answer your question. Please contact our support team for further assistance.",
-                "es": "No pude encontrar información relevante para responder a tu pregunta. Por favor, contacta a nuestro equipo de soporte para obtener más ayuda."
-            }
-            fallback_message = fallback_messages.get(request.language, fallback_messages["en"])
             bot_msg = await self.message_service.save_bot_message(
-                session_id=session_uuid, session_key=session_key,
-                text=fallback_message, language=request.language,
-                fallback_used=True, source_type="fallback",
+                session_id=session_uuid,
+                session_key=session_key,
+                text=fallback_message,
+                language=request.language,
+                fallback_used=True,
+                source_type="fallback",
             )
-            await self.session_service.save_turn(request.session_id, {"user": request.message, "bot": fallback_message})
-            await self.message_service.redis_session.update_context(session_key, escalation_source="Fallback escalation")
+
+            await self.session_service.save_turn(
+                request.session_id,
+                {"user": request.message, "bot": fallback_message}
+            )
+            await self.message_service.redis_session.update_context(
+                session_key,
+                escalation_source="Fallback escalation"
+            )
+
             return ChatResponse(
                 answer=fallback_message,
                 language=request.language,
@@ -1068,7 +1123,7 @@ class ChatService:
                 show_feedback=False,
                 requires_email=True,
                 support_submit_label=None,
-                prefilled_email=None,
+                prefilled_email=prefilled_email,
                 support_comment_enabled=True,
                 show_support_options=True,
                 allow_recontact=False,
@@ -1121,7 +1176,7 @@ class ChatService:
             context["bot_response_count"] = overall_count
             await self.message_service.redis_session.set_context(session_key, context)
         # For RAG answers (not fallback), always allow feedback (show_feedback True)
-        show_feedback = not fallback_used
+        show_feedback = not fallback_used or True  # Always show feedback for all normal answers
         # If you want interval-based feedback, use:
         # show_feedback = (bot_count % self.FEEDBACK_INTERVAL == 0) if bot_count > 0 else False
         show_overall_rating_popup = (overall_count % self.OVERALL_RATING_INTERVAL == 0) if overall_count > 0 else False
