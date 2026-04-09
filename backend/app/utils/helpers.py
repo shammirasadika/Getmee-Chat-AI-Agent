@@ -4,6 +4,66 @@ NAME_DETECTION_STOPWORDS = set([
 ])
 import re
 
+# Contraction map for query normalization
+_CONTRACTIONS = {
+    "can't": "cannot",
+    "cant": "cannot",
+    "won't": "will not",
+    "wont": "will not",
+    "don't": "do not",
+    "dont": "do not",
+    "didn't": "did not",
+    "didnt": "did not",
+    "doesn't": "does not",
+    "doesnt": "does not",
+    "isn't": "is not",
+    "isnt": "is not",
+    "aren't": "are not",
+    "arent": "are not",
+    "wasn't": "was not",
+    "wasnt": "was not",
+    "weren't": "were not",
+    "werent": "were not",
+    "hasn't": "has not",
+    "hasnt": "has not",
+    "haven't": "have not",
+    "havent": "have not",
+    "couldn't": "could not",
+    "couldnt": "could not",
+    "wouldn't": "would not",
+    "wouldnt": "would not",
+    "shouldn't": "should not",
+    "shouldnt": "should not",
+    "i'm": "i am",
+    "im": "i am",
+    "it's": "it is",
+    "its": "it is",
+    "that's": "that is",
+    "thats": "that is",
+    "what's": "what is",
+    "whats": "what is",
+    "there's": "there is",
+    "theres": "there is",
+    "they're": "they are",
+    "theyre": "they are",
+    "we're": "we are",
+    "were": "we are",
+    "you're": "you are",
+    "youre": "you are",
+    "let's": "let us",
+    "lets": "let us",
+}
+
+def normalize_query(text: str) -> str:
+    """Normalize user query for improved retrieval: lowercase, expand contractions, collapse spaces."""
+    text = text.lower().strip()
+    # Normalize curly/smart apostrophes to straight apostrophe
+    text = text.replace("\u2018", "'").replace("\u2019", "'")
+    for k, v in _CONTRACTIONS.items():
+        text = re.sub(rf"\b{re.escape(k)}\b", v, text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
 def safe_get(d: dict, key: str, default=None):
     return d[key] if key in d else default
 

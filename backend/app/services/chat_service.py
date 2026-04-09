@@ -40,7 +40,7 @@ from app.services.session_service import SessionService
 from app.services.message_service import MessageService
 from app.core.config import settings
 from app.models.chat import ChatRequest, ChatResponse
-from app.utils.helpers import clean_context_chunk, is_meaningful_chunk, filter_relevant_chunks, is_language_clean, MIN_PRIMARY_CONFIDENCE
+from app.utils.helpers import clean_context_chunk, is_meaningful_chunk, filter_relevant_chunks, is_language_clean, MIN_PRIMARY_CONFIDENCE, normalize_query
 import re
 import uuid
 
@@ -63,20 +63,23 @@ class ChatService:
         return terms
 
     @staticmethod
-    def get_chunk_question_portion(chunk: str) -> str:
-        match = re.search(r"question:\s*(.*?)(answer:|$)", chunk, re.IGNORECASE | re.DOTALL)
-        if match:
-            return match.group(1).strip()
-        return chunk
-
-    @staticmethod
     def chunk_matches_query_topic(query: str, chunk: str) -> bool:
         topic_terms = ChatService.extract_topic_terms(query)
-        # For FAQ chunks, compare to question portion if available
-        question_text = ChatService.get_chunk_question_portion(chunk)
-        chunk_lower = question_text.lower()
-        matches = [term for term in topic_terms if term in chunk_lower]
-        if len(topic_terms) <= 2:
+        if not topic_terms:
+            return True  # No meaningful topic terms to check — accept
+        # Normalize both query terms and chunk text for fair comparison
+        from app.utils.helpers import normalize_query
+        chunk_normalized = normalize_query(chunk)
+        # Also normalize topic terms (strip hyphens so "white-label" matches "white label")
+        normalized_terms = [t.replace("-", " ") for t in topic_terms]
+        # Extract question portion for matching (more specific, avoids false positives from answer text)
+        q_match = re.search(r"question:\s*(.*?)(answer:|$)", chunk_normalized, re.IGNORECASE | re.DOTALL)
+        match_text = q_match.group(1).strip() if q_match else chunk_normalized
+        # Also normalize hyphens in match text
+        match_text_nohyphen = match_text.replace("-", " ")
+        matches = [t for t in normalized_terms if t in match_text_nohyphen]
+        print(f"[DEBUG] topic_filter: terms={normalized_terms}, matches={matches}, match_text='{match_text_nohyphen[:100]}'", flush=True)
+        if len(normalized_terms) <= 3:
             return len(matches) >= 1
         return len(matches) >= 2
     # Language-agnostic intent patterns
@@ -1021,12 +1024,14 @@ class ChatService:
 
         # 1. Build primary query in selected UI language
         if input_language == selected_language:
-            primary_query = request.message
+            primary_query = normalize_query(request.message)
         else:
-            primary_query = await self.llm_client.translate(
+            raw_translated = await self.llm_client.translate(
                 request.message,
                 target_language=self.language_service.get_language_name(selected_language)
             )
+            primary_query = normalize_query(raw_translated)
+        print(f"[DEBUG] Normalized primary_query: '{primary_query}'", flush=True)
 
         retrieved, relevant_chunks, primary_distance, primary_confidence = await self._attempt_retrieval(
             primary_query,
@@ -1052,12 +1057,14 @@ class ChatService:
         fallback_query = None
         if not relevant_chunks or primary_confidence < PRIMARY_CONFIDENCE_THRESHOLD:
             if input_language == alternate_language:
-                fallback_query = request.message
+                fallback_query = normalize_query(request.message)
             else:
-                fallback_query = await self.llm_client.translate(
+                raw_fb_translated = await self.llm_client.translate(
                     request.message,
                     target_language=self.language_service.get_language_name(alternate_language)
                 )
+                fallback_query = normalize_query(raw_fb_translated)
+            print(f"[DEBUG] Normalized fallback_query: '{fallback_query}'", flush=True)
             print(f"[Chat] Step 3: Attempting fallback in '{alternate_language}'...", flush=True)
             fb_retrieved, fb_chunks, fb_distance, fb_confidence = await self._attempt_retrieval(
                 fallback_query,
