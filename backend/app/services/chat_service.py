@@ -48,6 +48,37 @@ import uuid
 
 
 class ChatService:
+    @staticmethod
+    def extract_topic_terms(text: str) -> list:
+        stopwords = {
+            "how", "what", "who", "when", "where", "why",
+            "is", "are", "do", "does", "did", "can", "could", "would", "should",
+            "the", "a", "an", "my", "your", "our", "their",
+            "question", "answer", "response", "help", "support", "information"
+        }
+        terms = []
+        for word in re.findall(r"\b[\w\-']+\b", text.lower()):
+            if word not in stopwords and len(word) > 2:
+                terms.append(word)
+        return terms
+
+    @staticmethod
+    def get_chunk_question_portion(chunk: str) -> str:
+        match = re.search(r"question:\s*(.*?)(answer:|$)", chunk, re.IGNORECASE | re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        return chunk
+
+    @staticmethod
+    def chunk_matches_query_topic(query: str, chunk: str) -> bool:
+        topic_terms = ChatService.extract_topic_terms(query)
+        # For FAQ chunks, compare to question portion if available
+        question_text = ChatService.get_chunk_question_portion(chunk)
+        chunk_lower = question_text.lower()
+        matches = [term for term in topic_terms if term in chunk_lower]
+        if len(topic_terms) <= 2:
+            return len(matches) >= 1
+        return len(matches) >= 2
     # Language-agnostic intent patterns
     INTENT_PATTERNS = {
         "greeting": [
@@ -1085,6 +1116,9 @@ class ChatService:
             # For Spanish, skip this strict rule
             if len(chunk.strip().split()) <= 2 and max_overlap < 0.7:
                 return False
+            # --- Topic-aware filter: require topic overlap ---
+            if not ChatService.chunk_matches_query_topic(query, chunk):
+                return False
             return True
 
 
@@ -1100,8 +1134,8 @@ class ChatService:
 
 
 
-        # --- Final guard: if no chunks remain after filtering, do not call LLM ---
-        if not relevant_chunks:
+        # --- Final guard: if no valid grounded chunks, do not call LLM ---
+        if not relevant_chunks or all(not (c and c.strip()) for c in relevant_chunks):
             print(
                 f"[Chat] FINAL GUARD: No semantically relevant chunks after filtering (retrieval={retrieval_language}) — skipping LLM",
                 flush=True
@@ -1150,9 +1184,22 @@ class ChatService:
         # Remove duplicate fallback/no-answer blocks after the final guard. Only the strict guard above controls the no-answer flow.
         sources = [{"text": doc[:200]} for doc in relevant_chunks]
 
+
         # If relevant chunks exist, keep current flow exactly as it is
-        # 5. Build prompt
-        prompt = self.prompt_service.build_prompt(request.message, [relevant_chunks], request.language)
+        print(f"[DEBUG] About to call LLM. relevant_chunks: {relevant_chunks}", flush=True)
+
+        # 5. Translate user question to context language for prompt matching
+        #    Response language is always request.language (unchanged)
+        prompt_query = request.message
+        if input_language != retrieval_language:
+            prompt_query = await self.llm_client.translate(
+                request.message,
+                target_language=self.language_service.get_language_name(retrieval_language)
+            )
+            print(f"[Chat] Step 5: Translated prompt question to '{retrieval_language}': '{prompt_query}'", flush=True)
+
+        # 5b. Build prompt — question in context language, response language stays as selected
+        prompt = self.prompt_service.build_prompt(prompt_query, [relevant_chunks], request.language)
 
         # 6. Generate answer — always in dropdown-selected language
         print(f"[Chat] Step 6: Generating answer in '{request.language}' (retrieval was '{retrieval_language}')", flush=True)
