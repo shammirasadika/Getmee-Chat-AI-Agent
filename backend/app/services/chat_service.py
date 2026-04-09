@@ -982,6 +982,12 @@ class ChatService:
         retrieval_language = selected_language
         fallback_used = False
 
+
+        # --- Retrieval thresholds ---
+        PRIMARY_CONFIDENCE_THRESHOLD = MIN_PRIMARY_CONFIDENCE
+        FALLBACK_CONFIDENCE_THRESHOLD = 0.15
+        FALLBACK_DISTANCE_THRESHOLD = 1.0
+
         # 1. Build primary query in selected UI language
         if input_language == selected_language:
             primary_query = request.message
@@ -999,13 +1005,21 @@ class ChatService:
             is_cross_language=(input_language != selected_language)
         )
 
+        print(f"[DEBUG] PRIMARY: query='{primary_query}', confidence={primary_confidence:.3f}, distance={primary_distance:.3f}", flush=True)
+        print(f"[DEBUG] PRIMARY: chunks before filtering: {len(relevant_chunks)}", flush=True)
+
         active_confidence = primary_confidence
         retrieval_query_for_validation = primary_query
         retrieval_confidence_for_validation = primary_confidence
         retrieval_language = selected_language
 
         # 2. Fallback: search in alternate language if primary fails
-        if not relevant_chunks or primary_confidence < MIN_PRIMARY_CONFIDENCE:
+        fb_chunks = []
+        fb_confidence = 0.0
+        fb_distance = 0.0
+        fb_retrieved = None
+        fallback_query = None
+        if not relevant_chunks or primary_confidence < PRIMARY_CONFIDENCE_THRESHOLD:
             if input_language == alternate_language:
                 fallback_query = request.message
             else:
@@ -1021,8 +1035,10 @@ class ChatService:
                 "FALLBACK",
                 is_cross_language=True
             )
-            # Accept fallback if any chunks found, regardless of confidence
-            if fb_chunks:
+            print(f"[DEBUG] FALLBACK: query='{fallback_query}', confidence={fb_confidence:.3f}, distance={fb_distance:.3f}", flush=True)
+            print(f"[DEBUG] FALLBACK: chunks before filtering: {len(fb_chunks)}", flush=True)
+            # Accept fallback only if chunks exist AND (confidence >= threshold OR distance <= threshold)
+            if fb_chunks and (fb_confidence >= FALLBACK_CONFIDENCE_THRESHOLD or fb_distance <= FALLBACK_DISTANCE_THRESHOLD):
                 relevant_chunks = fb_chunks
                 retrieved = fb_retrieved
                 retrieval_language = alternate_language
@@ -1032,7 +1048,7 @@ class ChatService:
                 retrieval_confidence_for_validation = fb_confidence
                 print(f"[Chat] Fallback SUCCESS — using '{alternate_language}' results ({len(fb_chunks)} relevant chunks)", flush=True)
             else:
-                print(f"[Chat] Fallback also has no relevant or strong chunks in '{alternate_language}'", flush=True)
+                print(f"[Chat] Fallback rejected: chunks={len(fb_chunks)}, confidence={fb_confidence:.3f}, distance={fb_distance:.3f}", flush=True)
 
 
 
@@ -1072,20 +1088,20 @@ class ChatService:
             return True
 
 
+
+        filtered_chunks = []
         if relevant_chunks:
-            filtered_chunks = []
             for c in relevant_chunks:
                 if _is_semantically_relevant(c, retrieval_query_for_validation, retrieval_confidence_for_validation):
                     filtered_chunks.append(c)
-            if not filtered_chunks:
-                print("[Chat] Stricter semantic validation: No relevant chunks after filtering", flush=True)
-            relevant_chunks = filtered_chunks
+        print(f"[DEBUG] Chunks after semantic filtering: {len(filtered_chunks)}", flush=True)
+        relevant_chunks = filtered_chunks
 
 
 
-        # --- Final guard: only after both attempts fail ---
-        # Only fallback if both primary and fallback retrieval failed
-        if not relevant_chunks or (active_confidence < MIN_PRIMARY_CONFIDENCE and not fallback_used):
+
+        # --- Final guard: if no chunks remain after filtering, do not call LLM ---
+        if not relevant_chunks:
             print(
                 f"[Chat] FINAL GUARD: No semantically relevant chunks after filtering (retrieval={retrieval_language}) — skipping LLM",
                 flush=True
