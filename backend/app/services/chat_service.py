@@ -57,7 +57,7 @@ from app.services.support_ticket_service import SupportTicketService
 from app.clients.postgres_client import PostgresClient
 from app.core.config import settings
 from app.models.chat import ChatRequest, ChatResponse
-from app.utils.helpers import clean_context_chunk, is_meaningful_chunk, filter_relevant_chunks, is_language_clean, MIN_PRIMARY_CONFIDENCE
+from app.utils.helpers import clean_context_chunk, is_meaningful_chunk, filter_relevant_chunks, is_language_clean, MIN_PRIMARY_CONFIDENCE, normalize_query
 import re
 import uuid
 
@@ -65,6 +65,40 @@ import uuid
 
 
 class ChatService:
+    @staticmethod
+    def extract_topic_terms(text: str) -> list:
+        stopwords = {
+            "how", "what", "who", "when", "where", "why",
+            "is", "are", "do", "does", "did", "can", "could", "would", "should",
+            "the", "a", "an", "my", "your", "our", "their",
+            "question", "answer", "response", "help", "support", "information"
+        }
+        terms = []
+        for word in re.findall(r"\b[\w\-']+\b", text.lower()):
+            if word not in stopwords and len(word) > 2:
+                terms.append(word)
+        return terms
+
+    @staticmethod
+    def chunk_matches_query_topic(query: str, chunk: str) -> bool:
+        topic_terms = ChatService.extract_topic_terms(query)
+        if not topic_terms:
+            return True  # No meaningful topic terms to check — accept
+        # Normalize both query terms and chunk text for fair comparison
+        from app.utils.helpers import normalize_query
+        chunk_normalized = normalize_query(chunk)
+        # Also normalize topic terms (strip hyphens so "white-label" matches "white label")
+        normalized_terms = [t.replace("-", " ") for t in topic_terms]
+        # Extract question portion for matching (more specific, avoids false positives from answer text)
+        q_match = re.search(r"question:\s*(.*?)(answer:|$)", chunk_normalized, re.IGNORECASE | re.DOTALL)
+        match_text = q_match.group(1).strip() if q_match else chunk_normalized
+        # Also normalize hyphens in match text
+        match_text_nohyphen = match_text.replace("-", " ")
+        matches = [t for t in normalized_terms if t in match_text_nohyphen]
+        print(f"[DEBUG] topic_filter: terms={normalized_terms}, matches={matches}, match_text='{match_text_nohyphen[:100]}'", flush=True)
+        if len(normalized_terms) <= 3:
+            return len(matches) >= 1
+        return len(matches) >= 2
     # Language-agnostic intent patterns
     INTENT_PATTERNS = {
         "greeting": [
@@ -1077,14 +1111,22 @@ class ChatService:
         retrieval_language = selected_language
         fallback_used = False
 
+
+        # --- Retrieval thresholds ---
+        PRIMARY_CONFIDENCE_THRESHOLD = MIN_PRIMARY_CONFIDENCE
+        FALLBACK_CONFIDENCE_THRESHOLD = 0.15
+        FALLBACK_DISTANCE_THRESHOLD = 1.0
+
         # 1. Build primary query in selected UI language
         if input_language == selected_language:
-            primary_query = request.message
+            primary_query = normalize_query(request.message)
         else:
-            primary_query = await self.llm_client.translate(
+            raw_translated = await self.llm_client.translate(
                 request.message,
                 target_language=self.language_service.get_language_name(selected_language)
             )
+            primary_query = normalize_query(raw_translated)
+        print(f"[DEBUG] Normalized primary_query: '{primary_query}'", flush=True)
 
         retrieved, relevant_chunks, primary_distance, primary_confidence = await self._attempt_retrieval(
             primary_query,
@@ -1094,20 +1136,30 @@ class ChatService:
             is_cross_language=(input_language != selected_language)
         )
 
+        print(f"[DEBUG] PRIMARY: query='{primary_query}', confidence={primary_confidence:.3f}, distance={primary_distance:.3f}", flush=True)
+        print(f"[DEBUG] PRIMARY: chunks before filtering: {len(relevant_chunks)}", flush=True)
+
         active_confidence = primary_confidence
         retrieval_query_for_validation = primary_query
         retrieval_confidence_for_validation = primary_confidence
         retrieval_language = selected_language
 
         # 2. Fallback: search in alternate language if primary fails
-        if not relevant_chunks or primary_confidence < MIN_PRIMARY_CONFIDENCE:
+        fb_chunks = []
+        fb_confidence = 0.0
+        fb_distance = 0.0
+        fb_retrieved = None
+        fallback_query = None
+        if not relevant_chunks or primary_confidence < PRIMARY_CONFIDENCE_THRESHOLD:
             if input_language == alternate_language:
-                fallback_query = request.message
+                fallback_query = normalize_query(request.message)
             else:
-                fallback_query = await self.llm_client.translate(
+                raw_fb_translated = await self.llm_client.translate(
                     request.message,
                     target_language=self.language_service.get_language_name(alternate_language)
                 )
+                fallback_query = normalize_query(raw_fb_translated)
+            print(f"[DEBUG] Normalized fallback_query: '{fallback_query}'", flush=True)
             print(f"[Chat] Step 3: Attempting fallback in '{alternate_language}'...", flush=True)
             fb_retrieved, fb_chunks, fb_distance, fb_confidence = await self._attempt_retrieval(
                 fallback_query,
@@ -1116,8 +1168,10 @@ class ChatService:
                 "FALLBACK",
                 is_cross_language=True
             )
-            # Accept fallback if any chunks found, regardless of confidence
-            if fb_chunks:
+            print(f"[DEBUG] FALLBACK: query='{fallback_query}', confidence={fb_confidence:.3f}, distance={fb_distance:.3f}", flush=True)
+            print(f"[DEBUG] FALLBACK: chunks before filtering: {len(fb_chunks)}", flush=True)
+            # Accept fallback only if chunks exist AND (confidence >= threshold OR distance <= threshold)
+            if fb_chunks and (fb_confidence >= FALLBACK_CONFIDENCE_THRESHOLD or fb_distance <= FALLBACK_DISTANCE_THRESHOLD):
                 relevant_chunks = fb_chunks
                 retrieved = fb_retrieved
                 retrieval_language = alternate_language
@@ -1127,7 +1181,7 @@ class ChatService:
                 retrieval_confidence_for_validation = fb_confidence
                 print(f"[Chat] Fallback SUCCESS — using '{alternate_language}' results ({len(fb_chunks)} relevant chunks)", flush=True)
             else:
-                print(f"[Chat] Fallback also has no relevant or strong chunks in '{alternate_language}'", flush=True)
+                print(f"[Chat] Fallback rejected: chunks={len(fb_chunks)}, confidence={fb_confidence:.3f}, distance={fb_distance:.3f}", flush=True)
 
 
 
@@ -1164,23 +1218,26 @@ class ChatService:
             # For Spanish, skip this strict rule
             if len(chunk.strip().split()) <= 2 and max_overlap < 0.7:
                 return False
+            # --- Topic-aware filter: require topic overlap ---
+            if not ChatService.chunk_matches_query_topic(query, chunk):
+                return False
             return True
 
 
+
+        filtered_chunks = []
         if relevant_chunks:
-            filtered_chunks = []
             for c in relevant_chunks:
                 if _is_semantically_relevant(c, retrieval_query_for_validation, retrieval_confidence_for_validation):
                     filtered_chunks.append(c)
-            if not filtered_chunks:
-                print("[Chat] Stricter semantic validation: No relevant chunks after filtering", flush=True)
-            relevant_chunks = filtered_chunks
+        print(f"[DEBUG] Chunks after semantic filtering: {len(filtered_chunks)}", flush=True)
+        relevant_chunks = filtered_chunks
 
 
 
-        # --- Final guard: only after both attempts fail ---
-        # Only fallback if both primary and fallback retrieval failed
-        if not relevant_chunks or (active_confidence < MIN_PRIMARY_CONFIDENCE and not fallback_used):
+
+        # --- Final guard: if no valid grounded chunks, do not call LLM ---
+        if not relevant_chunks or all(not (c and c.strip()) for c in relevant_chunks):
             print(
                 f"[Chat] FINAL GUARD: No semantically relevant chunks after filtering (retrieval={retrieval_language}) — skipping LLM",
                 flush=True
@@ -1229,9 +1286,22 @@ class ChatService:
         # Remove duplicate fallback/no-answer blocks after the final guard. Only the strict guard above controls the no-answer flow.
         sources = [{"text": doc[:200]} for doc in relevant_chunks]
 
+
         # If relevant chunks exist, keep current flow exactly as it is
-        # 5. Build prompt
-        prompt = self.prompt_service.build_prompt(request.message, [relevant_chunks], request.language)
+        print(f"[DEBUG] About to call LLM. relevant_chunks: {relevant_chunks}", flush=True)
+
+        # 5. Translate user question to context language for prompt matching
+        #    Response language is always request.language (unchanged)
+        prompt_query = request.message
+        if input_language != retrieval_language:
+            prompt_query = await self.llm_client.translate(
+                request.message,
+                target_language=self.language_service.get_language_name(retrieval_language)
+            )
+            print(f"[Chat] Step 5: Translated prompt question to '{retrieval_language}': '{prompt_query}'", flush=True)
+
+        # 5b. Build prompt — question in context language, response language stays as selected
+        prompt = self.prompt_service.build_prompt(prompt_query, [relevant_chunks], request.language)
 
         # 6. Generate answer — always in dropdown-selected language
         print(f"[Chat] Step 6: Generating answer in '{request.language}' (retrieval was '{retrieval_language}')", flush=True)

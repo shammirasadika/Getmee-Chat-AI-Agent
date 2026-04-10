@@ -12,6 +12,7 @@ class PromptService:
             context=context_text,
             question=query
         )
+        print(f"[DEBUG] LLM PROMPT SENT TO MODEL:\n{prompt}", flush=True)
         return prompt
 
     @staticmethod
