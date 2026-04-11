@@ -1088,9 +1088,9 @@ class ChatService:
             # Insert name if available
             if name:
                 if lang == 'es':
-                    nice_msg = f"{base_nice} {name}!"
+                    nice_msg = f"¡Mucho gusto, {name}! ¿En qué puedo ayudarte hoy?"
                 else:
-                    nice_msg = f"{base_nice} {name}!"
+                    nice_msg = f"Nice to meet you, {name}! How can I assist you today?"
             else:
                 nice_msg = base_nice
             await self.message_service.redis_session.push_message(session_key, {"role": "user", "text": request.message, "language": lang})
