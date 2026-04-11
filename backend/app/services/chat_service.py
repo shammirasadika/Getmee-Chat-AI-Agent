@@ -438,33 +438,6 @@ class ChatService:
 
     # SMALL_TALK_KEYWORDS removed; replaced by INTENT_PATTERNS/INTENT_RESPONSES
 
-    def _normalize_detected_name(self, candidate: str) -> str:
-        if not candidate:
-            return None
-
-        cleaned = re.sub(r"^[\s,.:;!?'-]+|[\s,.:;!?'-]+$", "", candidate)
-        if not cleaned:
-            return None
-
-        parts = []
-        for part in cleaned.split():
-            normalized_part = part.strip(" ,.:;!?\"'")
-            if not normalized_part:
-                continue
-            if normalized_part.lower() in self._NAME_CONTINUATION_STOPWORDS:
-                break
-            parts.append(normalized_part)
-            if len(parts) == 3:
-                break
-
-        if not parts:
-            return None
-
-        name = " ".join(parts)
-        if name.lower() in self._NAME_CONTINUATION_STOPWORDS:
-            return None
-        return name
-
     def _detect_context_update(self, message: str) -> str:
         """
         Extracts the user's name from the message if present.

@@ -10,9 +10,15 @@ from fastapi import APIRouter, HTTPException, Query
 import traceback
 from datetime import datetime, timezone
 from app.services.support_service import SupportService
+from app.services.support_ticket_service import SupportTicketService
 from app.services.session_service import SessionService
 
-from app.models.common import SupportSubmitRequest, SupportSubmitResponse
+from app.models.common import (
+    SupportSubmitRequest,
+    SupportSubmitResponse,
+    CreateTicketRequest,
+    CreateTicketResponse,
+)
 from app.services.chat_service import ChatService
 
 router = APIRouter()
