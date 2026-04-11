@@ -133,6 +133,9 @@ class ChatService:
             "hm", "hmm", "hmmm", "mm", "mmm", "um", "uhh", "ah", "oh", "yeah", "yup", "nope", "nah",
             # Spanish
             "mmm", "eh", "ah", "oh", "sí", "si", "no", "nop"
+        ],
+        "help_request": [
+            "help", "help me", "i need help", "support me", "i need support"
         ]
     }
 
@@ -145,7 +148,8 @@ class ChatService:
             "thanks": "You’re welcome! Let me know if you need anything else.",
             "acknowledgement": "Alright. Let me know if you need help with anything else.",
             "goodbye": "Goodbye! Feel free to come back anytime.",
-            "low_intent": "Let me know if you need help with anything."
+            "low_intent": "Let me know if you need help with anything.",
+            "help_request": "Sure, I'm here to help! What do you need assistance with?"
         },
         "es": {
             "greeting": "¡Hola! ¿En qué puedo ayudarte hoy?",
@@ -155,7 +159,8 @@ class ChatService:
             "thanks": "¡De nada! Avísame si necesitas algo más.",
             "acknowledgement": "De acuerdo. Avísame si necesitas ayuda con algo más.",
             "goodbye": "¡Adiós! No dudes en volver cuando quieras.",
-            "low_intent": "Avísame si necesitas ayuda con algo."
+            "low_intent": "Avísame si necesitas ayuda con algo.",
+            "help_request": "¡Claro, estoy aquí para ayudarte! ¿En qué necesitas asistencia?"
         }
     }
 
