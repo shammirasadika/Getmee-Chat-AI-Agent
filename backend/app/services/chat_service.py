@@ -214,6 +214,45 @@ class ChatService:
             "es": "Por favor, proporciona tu correo electrónico para que nuestro equipo de soporte pueda contactarte."
         }
         return messages.get(language, messages["en"])
+
+    def _get_support_offer_prompt(self, language: str) -> str:
+        messages = {
+            "en": "Would you like to contact our support team?",
+            "es": "¿Te gustaría contactar a nuestro equipo de soporte?"
+        }
+        return messages.get(language, messages["en"])
+
+    def _get_support_popup_intro(self, language: str) -> str:
+        messages = {
+            "en": "Sure. Please share your email address so our support team can assist you.",
+            "es": "Claro. Por favor, comparte tu correo electrónico para que nuestro equipo de soporte pueda ayudarte."
+        }
+        return messages.get(language, messages["en"])
+
+    def _get_support_declined_message(self, language: str) -> str:
+        messages = {
+            "en": "Okay, no problem. Let me know if you need any other help.",
+            "es": "Está bien, no hay problema. Avísame si necesitas otra ayuda."
+        }
+        return messages.get(language, messages["en"])
+
+    def _is_support_confirmation_yes(self, message: str) -> bool:
+        msg = re.sub(r"[^\w\sáéíóúñü]", " ", (message or "").lower())
+        msg = re.sub(r"\s+", " ", msg).strip()
+        yes_phrases = [
+            "yes", "yeah", "yep", "sure", "ok", "okay", "please", "yes please",
+            "contact support", "i want support", "need support",
+            "haan", "ha", "ji", "jii", "hya",
+            "si", "sí", "claro", "vale", "de acuerdo"
+        ]
+        return any(msg == p or msg.startswith(p + " ") or (" " + p + " ") in (" " + msg + " ") for p in yes_phrases)
+
+    def _is_support_confirmation_no(self, message: str) -> bool:
+        msg = re.sub(r"[^\w\sáéíóúñü]", " ", (message or "").lower())
+        msg = re.sub(r"\s+", " ", msg).strip()
+        no_phrases = ["no", "nah", "nope", "not now", "later", "na", "no thanks", "not needed"]
+        return any(msg == p or msg.startswith(p + " ") or (" " + p + " ") in (" " + msg + " ") for p in no_phrases)
+
     async def _prepare_new_support_submission(self, session_key: str):
         """
         Reset the per-submission guard so the next actual submission increments support_request_count.
@@ -285,7 +324,14 @@ class ChatService:
             "support_status": context.get("support_status"),
             "support_request_count": context.get("support_request_count", 0),
             "recontact_confirmation_shown": context.get("recontact_confirmation_shown", False),
+            "support_offer_pending": context.get("support_offer_pending", False),
         }
+
+    async def _set_support_offer_pending(self, session_key: str, pending: bool) -> None:
+        context = await self.message_service.redis_session.get_context(session_key)
+        context = context or {}
+        context["support_offer_pending"] = pending
+        await self.message_service.redis_session.set_context(session_key, context)
 
     async def _mark_support_submitted(
         self,
@@ -340,13 +386,11 @@ class ChatService:
         messages = {
             "en": (
                 "I couldn’t find a relevant answer to your question. "
-                "Your enquiry can be forwarded to our support team. "
-                "Please provide your email address so a team member can contact you."
+                "Would you like to contact our support team?"
             ),
             "es": (
                 "No pude encontrar una respuesta relevante a tu pregunta. "
-                "Tu consulta puede ser enviada a nuestro equipo de soporte. "
-                "Por favor, proporciona tu correo electrónico para que un miembro del equipo pueda contactarte."
+                "¿Te gustaría contactar a nuestro equipo de soporte?"
             ),
         }
         return messages.get(language, messages["en"])
@@ -802,6 +846,70 @@ class ChatService:
         lang = request.language or "en"
         max_support_requests = 2  # Enforced by _is_support_limit_reached
         reescalation_intent = self._detect_reescalation_intent(request.message)
+
+        # If support offer is pending, only open email popup after explicit yes-like confirmation.
+        if support_context.get("support_offer_pending", False):
+            if self._is_support_confirmation_yes(request.message):
+                if self._is_support_limit_reached(support_context):
+                    await self._set_support_offer_pending(session_key, False)
+                    return ChatResponse(
+                        answer=self._get_direct_support_limit_message(lang),
+                        language=lang,
+                        sources=[],
+                        fallback_used=False,
+                        requires_email=False,
+                        retrieval_language=lang,
+                        message_id=None,
+                        session_uuid=str(session_uuid),
+                        show_feedback=False,
+                        prefilled_email=None,
+                        support_comment_enabled=False,
+                        show_support_options=False,
+                        allow_recontact=False,
+                        show_recontact_confirmation=False,
+                        support_submit_label=None,
+                    )
+
+                await self._prepare_new_support_submission(session_key)
+                await self._set_support_offer_pending(session_key, False)
+                return ChatResponse(
+                    answer=self._get_support_popup_intro(lang),
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=True,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                    prefilled_email=support_context.get("support_email"),
+                    support_comment_enabled=True,
+                    show_support_options=True,
+                    allow_recontact=False,
+                    show_recontact_confirmation=False,
+                    support_submit_label="Contact Support",
+                )
+
+            if self._is_support_confirmation_no(request.message):
+                await self._set_support_offer_pending(session_key, False)
+                return ChatResponse(
+                    answer=self._get_support_declined_message(lang),
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                    prefilled_email=None,
+                    support_comment_enabled=False,
+                    show_support_options=False,
+                    allow_recontact=False,
+                    show_recontact_confirmation=False,
+                    support_submit_label=None,
+                )
+
         # Always validate if input contains '@' and is not a valid email
         if ("@" in request.message and not email_match):
             return ChatResponse(
@@ -845,33 +953,29 @@ class ChatService:
                     show_recontact_confirmation=False,
                     support_submit_label=None,
                 )
-            # Below limit: allow popup (reset guard before opening popup)
-            await self._prepare_new_support_submission(session_key)
-            # Set escalation_source in Redis for Unsatisfied escalation
-            await self.message_service.redis_session.update_context(session_key, escalation_source="Unsatisfied escalation")
-            print("[DEBUG] Support limit NOT reached. Returning requires_email=True, prefilled_email=", support_context.get("support_email"))
-            # Determine if this is first escalation or re-escalation
-            support_count = support_context.get("support_request_count", 0)
-            if support_count == 0:
-                submit_label = "Contact Support"
-            else:
-                submit_label = "Contact again"
+            # Below limit: ask for support confirmation first.
+            await self.message_service.redis_session.update_context(
+                session_key,
+                escalation_source="Unsatisfied escalation",
+                support_offer_pending=True,
+            )
+            print("[DEBUG] Support limit NOT reached. Support confirmation requested.")
             response = ChatResponse(
-                answer=self._get_unsatisfied_support_prompt(lang),
+                answer=self._get_support_offer_prompt(lang),
                 language=lang,
                 sources=[],
                 fallback_used=False,
-                requires_email=True,
+                requires_email=False,
                 retrieval_language=lang,
                 message_id=None,
                 session_uuid=str(session_uuid),
                 show_feedback=False,
                 prefilled_email=support_context.get("support_email"),
-                support_comment_enabled=True,
-                show_support_options=True,
+                support_comment_enabled=False,
+                show_support_options=False,
                 allow_recontact=False,
                 show_recontact_confirmation=False,
-                support_submit_label=submit_label,
+                support_submit_label=None,
             )
             print("[DEBUG] Unsatisfied branch response:", response)
             return response
@@ -1269,7 +1373,8 @@ class ChatService:
             )
             await self.message_service.redis_session.update_context(
                 session_key,
-                escalation_source="Fallback escalation"
+                escalation_source="Fallback escalation",
+                support_offer_pending=True,
             )
 
             return ChatResponse(
@@ -1281,11 +1386,11 @@ class ChatService:
                 message_id=str(bot_msg["id"]),
                 session_uuid=str(session_uuid),
                 show_feedback=False,
-                requires_email=True,
+                requires_email=False,
                 support_submit_label=None,
                 prefilled_email=prefilled_email,
-                support_comment_enabled=True,
-                show_support_options=True,
+                support_comment_enabled=False,
+                show_support_options=False,
                 allow_recontact=False,
                 show_recontact_confirmation=False,
             )
@@ -1345,6 +1450,15 @@ class ChatService:
             print(f"[Chat] Step 7: Language validation FAILED for '{request.language}' — rewriting...", flush=True)
             answer = await self.llm_client.cleanup_language(answer, request.language)
 
+        trigger_support = self._contains_support_keywords(answer)
+        if trigger_support:
+            answer = f"{answer}\n\n{self._get_support_offer_prompt(request.language or 'en')}"
+            await self.message_service.redis_session.update_context(
+                session_key,
+                escalation_source="Rag escalation",
+                support_offer_pending=True,
+            )
+
         # 8. Save bot message to PG + Redis (sets feedback_state)
         bot_msg = await self.message_service.save_bot_message(
             session_id=session_uuid, session_key=session_key,
@@ -1384,9 +1498,13 @@ class ChatService:
         support_popup_message = None
         escalation_source = None
         if trigger_support:
-            support_popup_message = "Please describe your issue for our support team."
+            support_popup_message = "Would you like to contact our support team?"
             escalation_source = "Rag escalation"
-            await self.message_service.redis_session.update_context(session_key, escalation_source=escalation_source)
+            await self.message_service.redis_session.update_context(
+                session_key,
+                escalation_source=escalation_source,
+                support_offer_pending=True,
+            )
         # If the support popup is being opened for a direct user action (not fallback/unsatisfied/keyword), set escalation_source
         if not fallback_used and not trigger_support and not (hasattr(request, 'unsatisfied_click') and getattr(request, 'unsatisfied_click', False)):
             await self.message_service.redis_session.update_context(session_key, escalation_source="User direct request")
@@ -1401,7 +1519,7 @@ class ChatService:
             session_uuid=str(session_uuid),
             show_feedback=show_feedback,
             show_overall_rating_popup=show_overall_rating_popup,
-            requires_email=trigger_support,
+            requires_email=False,
             support_submit_label=None,
             prefilled_email=None,
             support_comment_enabled=None,
