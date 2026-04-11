@@ -135,7 +135,10 @@ class ChatService:
             "mmm", "eh", "ah", "oh", "sí", "si", "no", "nop"
         ],
         "help_request": [
-            "help", "help me", "i need help", "support me", "i need support"
+            # English
+            "help", "help me", "i need help", "support me", "i need support","i need your help", "can you help me", "could you help me", "i need assistance", "i need assistance", "can you assist me", "could you assist me", "assist me",
+            # Spanish
+            "ayuda", "ayúdame", "necesito ayuda", "apóyame", "necesito apoyo", "necesito tu ayuda", "¿puedes ayudarme?", "puedes ayudarme", "¿podrías ayudarme?", "podrías ayudarme", "necesito asistencia", "¿puedes asistirme?", "puedes asistirme", "¿podrías asistirme?", "podrías asistirme", "asistirme"
         ]
     }
 
@@ -720,9 +723,9 @@ class ChatService:
             # Ensure session_uuid is available, fallback to 'unknown' if not
             session_uuid_str = str(locals().get('session_uuid', 'unknown'))
             if lang == 'es':
-                answer = f"Me llamo {bot_name}."
+                answer = f"¡Hola! Soy {bot_name}. Estoy aquí para ayudarte. ¿En qué puedo asistirte hoy?"
             else:
-                answer = f"My name is {bot_name}."
+                answer = f"Hello! I'm {bot_name}. I'm here to help you. How can I assist you today?"
             return ChatResponse(
                 answer=answer,
                 language=lang,
