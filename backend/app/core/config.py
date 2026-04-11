@@ -38,4 +38,4 @@ if not settings.LLM_API_KEY:
         "Add GROQ_API_KEY=your_key to your .env file."
     )
 
-print(f"[CONFIG] LLM_PROVIDER={settings.LLM_PROVIDER}, LLM_API_KEY=set", flush=True)
+

@@ -6,6 +6,6 @@ collection = get_collection()
 ids = collection.get()["ids"]
 if ids:
     collection.delete(ids=ids)
-    print(f"Deleted {len(ids)} records from the collection.")
+    # print(f"Deleted {len(ids)} records from the collection.")  # Removed debug print
 else:
-    print("No records to delete.")
+    # print("No records to delete.")  # Removed debug print

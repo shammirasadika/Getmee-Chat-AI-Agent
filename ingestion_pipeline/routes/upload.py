@@ -1,9 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
  
-from services.text_extractor import extract_text
-from services.text_cleaner import clean_text
-from services.chunker import chunk_text
+from services.text_extractor import extract_and_chunk
 from utils.logger import get_logger
 import os
 
@@ -63,16 +61,10 @@ async def upload_file(file: UploadFile = File(...)):
         logger.info(f"Temp file written: {time.time() - step_start:.3f}s")
         step_start = time.time()
         try:
-            text = extract_text(temp_path, file.filename)
+            chunks = extract_and_chunk(temp_path, file.filename)
         finally:
             os.remove(temp_path)
-        logger.info(f"Text extracted: {time.time() - step_start:.3f}s")
-        step_start = time.time()
-        cleaned = clean_text(text)
-        logger.info(f"Text cleaned: {time.time() - step_start:.3f}s")
-        step_start = time.time()
-        chunks = chunk_text(cleaned)
-        logger.info(f"Text chunked: {time.time() - step_start:.3f}s")
+        logger.info(f"Text extracted and chunked: {time.time() - step_start:.3f}s")
         step_start = time.time()
         metadata = {"filename": file.filename}
         embedding_success = embed_and_store_in_chromadb(chunks, metadata)
@@ -80,7 +72,7 @@ async def upload_file(file: UploadFile = File(...)):
         logger.info(f"Total upload time: {time.time() - start_total:.3f}s")
         if not embedding_success:
             raise Exception("Failed to store document in ChromaDB")
-        return JSONResponse({"text": cleaned, "chunks": chunks, "chromadb_status": "success"})
+        return JSONResponse({"chunks": chunks, "chromadb_status": "success"})
     except Exception as e:
         logger.error(f"Upload failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

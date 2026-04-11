@@ -31,14 +31,13 @@ class FeedbackService:
         - If not_satisfied, sets up support_state for escalation flow
         """
 
-        print(f"[DEBUG] submit_message_feedback called with: session_key={session_key}, session_id={session_id}, message_id={message_id}, feedback={feedback}")
-        # Persist to PostgreSQL
+        print(f"[FeedbackService] Inserting message_feedback: message_id={message_id}, session_id={session_id}, feedback={feedback}")
         row = await self.db.insert_message_feedback(
             message_id=message_id,
             session_id=session_id,
             feedback=feedback,
         )
-        print(f"[DEBUG] Feedback inserted into DB: {row}")
+        print(f"[FeedbackService] Insert result: {row}")
 
         # Update Redis: mark feedback submitted
         await self.redis_session.mark_feedback_submitted(session_key)
@@ -69,11 +68,13 @@ class FeedbackService:
         Record a final 1–5 rating for the whole conversation.
         Updates Redis endchat_state and optionally expires session keys.
         """
+        print(f"[FeedbackService] Inserting session_feedback: session_id={session_id}, rating={rating}, comment={comment}")
         row = await self.db.insert_session_feedback(
             session_id=session_id,
             rating=rating,
             comment=comment,
         )
+        print(f"[FeedbackService] Insert result: {row}")
         # Clear the pending flag
         await self.redis_session.set_endchat_state(
             session_key, chat_ended=True, session_feedback_pending=False,

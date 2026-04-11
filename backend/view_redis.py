@@ -13,12 +13,4 @@ r = redis.from_url(REDIS_URL, password=REDIS_TOKEN)
 pattern = "session:*"
 keys = r.keys(pattern)
 
-print(f"Found {len(keys)} session keys:")
-for key in keys:
-    print(f"\nKey: {key.decode() if isinstance(key, bytes) else key}")
-    value = r.get(key)
-    try:
-        # Try to pretty-print JSON values
-        print(json.dumps(json.loads(value), indent=2))
-    except Exception:
-        print(value)
+# Debug print statements removed

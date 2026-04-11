@@ -1,3 +1,11 @@
+"""
+feedback.py
+
+This module contains API endpoints for feedback-driven support escalation.
+Use these endpoints when support escalation is triggered as part of the chat/feedback flow (e.g., user clicks 'Not Satisfied' and requests human help).
+
+Best practice: Keep these endpoints separate from direct support requests for clarity, unless/until both flows are identical.
+"""
 from fastapi import APIRouter, Depends, HTTPException
 from app.models.feedback import (
     FeedbackRequest, FeedbackResponse,
@@ -13,18 +21,6 @@ from app.services.support_ticket_service import SupportTicketService
 import uuid as _uuid
 
 router = APIRouter()
-
-
-# ── Legacy endpoint (backwards-compatible) ───────
-
-@router.post("/", response_model=FeedbackResponse)
-async def feedback_endpoint(request: FeedbackRequest, feedback_service: FeedbackService = Depends()):
-    """Legacy: save quick thumbs-up/down to old feedback table."""
-    try:
-        response = await feedback_service.handle_feedback(request)
-        return response
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Message-level feedback  (Satisfied / Not Satisfied) ──
@@ -80,7 +76,7 @@ async def session_feedback_endpoint(
     try:
         session = await session_service.get_or_create_session(request.session_key)
         session_id = session["id"]
-        await feedback_service.submit_session_feedback(
+        row = await feedback_service.submit_session_feedback(
             session_key=request.session_key,
             session_id=session_id,
             rating=request.rating,
@@ -125,61 +121,3 @@ async def try_again_endpoint(
 
 # ── Contact Human Support  (after Not Satisfied) ─
 
-@router.post("/contact-support", response_model=ContactSupportResponse)
-async def contact_support_endpoint(
-    request: ContactSupportRequest,
-    session_service: SessionService = Depends(),
-    ticket_service: SupportTicketService = Depends(),
-):
-    """Create a support ticket after user confirms they want human help."""
-    try:
-        session = await session_service.get_or_create_session(request.session_key)
-        session_id = session["id"]
-
-        # Derive issue summary from Redis support_state if not provided
-        issue_summary = request.issue_summary or "User requested human support after unsatisfactory bot answer."
-
-        # Resolve related message_id from Redis support_state
-        from app.services.redis_session_service import RedisSessionService
-        from app.core.config import settings as _settings
-        redis_svc = RedisSessionService(_settings.REDIS_URL)
-        support_state = await redis_svc.get_support_state(request.session_key)
-        message_id = None
-        if support_state and support_state.get("selected_message_id"):
-            try:
-                message_id = _uuid.UUID(support_state["selected_message_id"])
-            except ValueError:
-                pass
-
-        # Update user email on session if provided
-        if request.user_email:
-            from app.clients.postgres_client import PostgresClient
-            db = PostgresClient(_settings.POSTGRES_URL)
-            await db.update_session_email(session_id, request.user_email)
-
-        # Save to support_requests for unified escalation tracking
-        from app.services.support_service import SupportService
-        support_service = SupportService()
-        await support_service.handle_fallback_escalation(
-            session_id=session_id,
-            user_message=issue_summary,
-            user_email=request.user_email or "",
-            language="en",
-            fallback_message=None,
-            chat_summary=None,
-            source=request.source or "user_unsatisfied",
-        )
-        ticket = await ticket_service.create_ticket(
-            session_id=session_id,
-            session_key=request.session_key,
-            issue_summary=issue_summary,
-            message_id=message_id,
-            user_email=request.user_email,
-        )
-        return ContactSupportResponse(
-            success=True,
-            ticket_id=str(ticket["id"]),
-            detail="Support ticket created. A team member will contact you.",
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
