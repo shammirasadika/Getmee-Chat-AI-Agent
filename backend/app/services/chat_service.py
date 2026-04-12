@@ -1,14 +1,14 @@
 STATIC_RESPONSES = {
     'en': {
         'bot_name': "My name is {bot_name}.",
-        'bot_intro': "Hi! I'm {bot_name}. I'm here to help you with your questions. How can I assist you today?",
+        'bot_intro': "I'm {bot_name}, your AI support assistant. I can guide you with your questions and platform-related help. How can I assist you today?",
         'email_multiple_found': "I found multiple email addresses: {emails}. Please reply with the one you want me to save (you can send the email or its number).",
         'email_pick_invalid': "I still need one email from this list: {emails}. Please reply with the email or its number.",
         'email_saved': "Thanks! I have successfully saved your email address: {email}. Our team can use this to contact you.",
         'email_invalid': "That email format looks invalid. Please share a valid email address.",
         'email_save_failed': "I found your email, but I could not save it right now. Please try again.",
         'nice_to_meet_you': "Nice to meet you!",
-        'nice_to_meet_you_named': "Nice to meet you, {name}. How can I help you today?",
+        'nice_to_meet_you_named': "Nice to meet you, {name}! How can I help you today?",
         'you_are_welcome': "You're welcome! Let me know if you need anything else.",
         'fallback': "I couldn’t find a relevant answer to your question.",
         'no_name': "I don’t have your name yet.",
@@ -24,7 +24,7 @@ STATIC_RESPONSES = {
     },
     'es': {
         'bot_name': "Me llamo {bot_name}.",
-        'bot_intro': "Hola! Soy {bot_name}. Estoy aqui para ayudarte con tus preguntas. En que puedo ayudarte hoy?",
+        'bot_intro': "Soy {bot_name}, tu asistente de soporte con IA. Puedo guiarte con tus preguntas y ayudarte con la plataforma. ¿Cómo puedo ayudarte hoy?",
         'email_multiple_found': "Encontre varios correos: {emails}. Responde con el que quieres que guarde (puedes enviar el correo o su numero).",
         'email_pick_invalid': "Aun necesito un correo de esta lista: {emails}. Responde con el correo o su numero.",
         'email_saved': "Gracias! He guardado correctamente tu correo: {email}. Nuestro equipo puede usarlo para contactarte.",
@@ -135,10 +135,22 @@ class ChatService:
             "mmm", "eh", "ah", "oh", "sí", "si", "no", "nop"
         ],
         "help_request": [
-            # English
-            "help", "help me", "i need help", "support me", "i need support","i need your help", "can you help me", "could you help me", "i need assistance", "i need assistance", "can you assist me", "could you assist me", "assist me",
-            # Spanish
-            "ayuda", "ayúdame", "necesito ayuda", "apóyame", "necesito apoyo", "necesito tu ayuda", "¿puedes ayudarme?", "puedes ayudarme", "¿podrías ayudarme?", "podrías ayudarme", "necesito asistencia", "¿puedes asistirme?", "puedes asistirme", "¿podrías asistirme?", "podrías asistirme", "asistirme"
+            # English variations
+            "help", "help me", "i need help", "can you help", "can you help me",
+            "support me", "i need support", "can you support me",
+            "assist me", "i need assistance", "can you assist me",
+            "can you help with", "need help", "need assistance",
+            "help please", "assist please", "please help",
+            "help!", "i'm stuck", "i'm confused",
+            "what should i do", "what do i do",
+            # Spanish variations
+            "ayuda", "ayudame", "necesito ayuda", "puedes ayudarme",
+            "puedes ayudar", "dame ayuda",
+            "soporte", "necesito soporte", "puedo pedir soporte",
+            "asistencia", "necesito asistencia", "asisteme",
+            "ayuda por favor", "asiste por favor",
+            "ayuda!", "estoy atascado", "estoy confundido",
+            "qué debo hacer", "qué hago"
         ]
     }
 
@@ -163,7 +175,7 @@ class ChatService:
             "acknowledgement": "De acuerdo. Avísame si necesitas ayuda con algo más.",
             "goodbye": "¡Adiós! No dudes en volver cuando quieras.",
             "low_intent": "Avísame si necesitas ayuda con algo.",
-            "help_request": "¡Claro, estoy aquí para ayudarte! ¿En qué necesitas asistencia?"
+            "help_request": "¡Claro! Estoy aquí para ayudarte. ¿Con qué necesitas ayuda?"
         }
     }
 
@@ -214,45 +226,6 @@ class ChatService:
             "es": "Por favor, proporciona tu correo electrónico para que nuestro equipo de soporte pueda contactarte."
         }
         return messages.get(language, messages["en"])
-
-    def _get_support_offer_prompt(self, language: str) -> str:
-        messages = {
-            "en": "Would you like to contact our support team?",
-            "es": "¿Te gustaría contactar a nuestro equipo de soporte?"
-        }
-        return messages.get(language, messages["en"])
-
-    def _get_support_popup_intro(self, language: str) -> str:
-        messages = {
-            "en": "Sure. Please share your email address so our support team can assist you.",
-            "es": "Claro. Por favor, comparte tu correo electrónico para que nuestro equipo de soporte pueda ayudarte."
-        }
-        return messages.get(language, messages["en"])
-
-    def _get_support_declined_message(self, language: str) -> str:
-        messages = {
-            "en": "Okay, no problem. Let me know if you need any other help.",
-            "es": "Está bien, no hay problema. Avísame si necesitas otra ayuda."
-        }
-        return messages.get(language, messages["en"])
-
-    def _is_support_confirmation_yes(self, message: str) -> bool:
-        msg = re.sub(r"[^\w\sáéíóúñü]", " ", (message or "").lower())
-        msg = re.sub(r"\s+", " ", msg).strip()
-        yes_phrases = [
-            "yes", "yeah", "yep", "sure", "ok", "okay", "please", "yes please",
-            "contact support", "i want support", "need support",
-            "haan", "ha", "ji", "jii", "hya",
-            "si", "sí", "claro", "vale", "de acuerdo"
-        ]
-        return any(msg == p or msg.startswith(p + " ") or (" " + p + " ") in (" " + msg + " ") for p in yes_phrases)
-
-    def _is_support_confirmation_no(self, message: str) -> bool:
-        msg = re.sub(r"[^\w\sáéíóúñü]", " ", (message or "").lower())
-        msg = re.sub(r"\s+", " ", msg).strip()
-        no_phrases = ["no", "nah", "nope", "not now", "later", "na", "no thanks", "not needed"]
-        return any(msg == p or msg.startswith(p + " ") or (" " + p + " ") in (" " + msg + " ") for p in no_phrases)
-
     async def _prepare_new_support_submission(self, session_key: str):
         """
         Reset the per-submission guard so the next actual submission increments support_request_count.
@@ -324,14 +297,7 @@ class ChatService:
             "support_status": context.get("support_status"),
             "support_request_count": context.get("support_request_count", 0),
             "recontact_confirmation_shown": context.get("recontact_confirmation_shown", False),
-            "support_offer_pending": context.get("support_offer_pending", False),
         }
-
-    async def _set_support_offer_pending(self, session_key: str, pending: bool) -> None:
-        context = await self.message_service.redis_session.get_context(session_key)
-        context = context or {}
-        context["support_offer_pending"] = pending
-        await self.message_service.redis_session.set_context(session_key, context)
 
     async def _mark_support_submitted(
         self,
@@ -386,11 +352,13 @@ class ChatService:
         messages = {
             "en": (
                 "I couldn’t find a relevant answer to your question. "
-                "Would you like to contact our support team?"
+                "Your enquiry can be forwarded to our support team. "
+                "Please provide your email address so a team member can contact you."
             ),
             "es": (
                 "No pude encontrar una respuesta relevante a tu pregunta. "
-                "¿Te gustaría contactar a nuestro equipo de soporte?"
+                "Tu consulta puede ser enviada a nuestro equipo de soporte. "
+                "Por favor, proporciona tu correo electrónico para que un miembro del equipo pueda contactarte."
             ),
         }
         return messages.get(language, messages["en"])
@@ -766,10 +734,11 @@ class ChatService:
             bot_name = getattr(self, 'BOT_NAME', 'Getmee Chatbot')
             # Ensure session_uuid is available, fallback to 'unknown' if not
             session_uuid_str = str(locals().get('session_uuid', 'unknown'))
-            if lang == 'es':
-                answer = f"¡Hola! Soy {bot_name}. Estoy aquí para ayudarte. ¿En qué puedo asistirte hoy?"
-            else:
-                answer = f"Hello! I'm {bot_name}. I'm here to help you. How can I assist you today?"
+            responses = STATIC_RESPONSES.get(lang, STATIC_RESPONSES['en'])
+            answer = responses.get(
+                'bot_intro',
+                "I'm {bot_name}, your AI support assistant. I can guide you with your questions and platform-related help. How can I assist you today?"
+            ).format(bot_name=bot_name)
             return ChatResponse(
                 answer=answer,
                 language=lang,
@@ -846,70 +815,6 @@ class ChatService:
         lang = request.language or "en"
         max_support_requests = 2  # Enforced by _is_support_limit_reached
         reescalation_intent = self._detect_reescalation_intent(request.message)
-
-        # If support offer is pending, only open email popup after explicit yes-like confirmation.
-        if support_context.get("support_offer_pending", False):
-            if self._is_support_confirmation_yes(request.message):
-                if self._is_support_limit_reached(support_context):
-                    await self._set_support_offer_pending(session_key, False)
-                    return ChatResponse(
-                        answer=self._get_direct_support_limit_message(lang),
-                        language=lang,
-                        sources=[],
-                        fallback_used=False,
-                        requires_email=False,
-                        retrieval_language=lang,
-                        message_id=None,
-                        session_uuid=str(session_uuid),
-                        show_feedback=False,
-                        prefilled_email=None,
-                        support_comment_enabled=False,
-                        show_support_options=False,
-                        allow_recontact=False,
-                        show_recontact_confirmation=False,
-                        support_submit_label=None,
-                    )
-
-                await self._prepare_new_support_submission(session_key)
-                await self._set_support_offer_pending(session_key, False)
-                return ChatResponse(
-                    answer=self._get_support_popup_intro(lang),
-                    language=lang,
-                    sources=[],
-                    fallback_used=False,
-                    requires_email=True,
-                    retrieval_language=lang,
-                    message_id=None,
-                    session_uuid=str(session_uuid),
-                    show_feedback=False,
-                    prefilled_email=support_context.get("support_email"),
-                    support_comment_enabled=True,
-                    show_support_options=True,
-                    allow_recontact=False,
-                    show_recontact_confirmation=False,
-                    support_submit_label="Contact Support",
-                )
-
-            if self._is_support_confirmation_no(request.message):
-                await self._set_support_offer_pending(session_key, False)
-                return ChatResponse(
-                    answer=self._get_support_declined_message(lang),
-                    language=lang,
-                    sources=[],
-                    fallback_used=False,
-                    requires_email=False,
-                    retrieval_language=lang,
-                    message_id=None,
-                    session_uuid=str(session_uuid),
-                    show_feedback=False,
-                    prefilled_email=None,
-                    support_comment_enabled=False,
-                    show_support_options=False,
-                    allow_recontact=False,
-                    show_recontact_confirmation=False,
-                    support_submit_label=None,
-                )
-
         # Always validate if input contains '@' and is not a valid email
         if ("@" in request.message and not email_match):
             return ChatResponse(
@@ -953,29 +858,33 @@ class ChatService:
                     show_recontact_confirmation=False,
                     support_submit_label=None,
                 )
-            # Below limit: ask for support confirmation first.
-            await self.message_service.redis_session.update_context(
-                session_key,
-                escalation_source="Unsatisfied escalation",
-                support_offer_pending=True,
-            )
-            print("[DEBUG] Support limit NOT reached. Support confirmation requested.")
+            # Below limit: allow popup (reset guard before opening popup)
+            await self._prepare_new_support_submission(session_key)
+            # Set escalation_source in Redis for Unsatisfied escalation
+            await self.message_service.redis_session.update_context(session_key, escalation_source="Unsatisfied escalation")
+            print("[DEBUG] Support limit NOT reached. Returning requires_email=True, prefilled_email=", support_context.get("support_email"))
+            # Determine if this is first escalation or re-escalation
+            support_count = support_context.get("support_request_count", 0)
+            if support_count == 0:
+                submit_label = "Contact Support"
+            else:
+                submit_label = "Contact again"
             response = ChatResponse(
-                answer=self._get_support_offer_prompt(lang),
+                answer=self._get_unsatisfied_support_prompt(lang),
                 language=lang,
                 sources=[],
                 fallback_used=False,
-                requires_email=False,
+                requires_email=True,
                 retrieval_language=lang,
                 message_id=None,
                 session_uuid=str(session_uuid),
                 show_feedback=False,
                 prefilled_email=support_context.get("support_email"),
-                support_comment_enabled=False,
-                show_support_options=False,
+                support_comment_enabled=True,
+                show_support_options=True,
                 allow_recontact=False,
                 show_recontact_confirmation=False,
-                support_submit_label=None,
+                support_submit_label=submit_label,
             )
             print("[DEBUG] Unsatisfied branch response:", response)
             return response
@@ -1184,19 +1093,8 @@ class ChatService:
             ctx["user_name"] = name
             await self.message_service.redis_session.set_context(session_key, ctx)
             lang = request.language or 'en'
-            # Add user's name to the nice to meet you message
-            if lang in STATIC_RESPONSES and "nice_to_meet_you" in STATIC_RESPONSES[lang]:
-                base_nice = STATIC_RESPONSES[lang]["nice_to_meet_you"]
-            else:
-                base_nice = "Nice to meet you!"
-            # Insert name if available
-            if name:
-                if lang == 'es':
-                    nice_msg = f"¡Mucho gusto, {name}! ¿En qué puedo ayudarte hoy?"
-                else:
-                    nice_msg = f"Nice to meet you, {name}! How can I assist you today?"
-            else:
-                nice_msg = base_nice
+            responses = STATIC_RESPONSES.get(lang, STATIC_RESPONSES['en'])
+            nice_msg = responses.get('nice_to_meet_you_named', "Nice to meet you, {name}! How can I help you today?").format(name=name)
             await self.message_service.redis_session.push_message(session_key, {"role": "user", "text": request.message, "language": lang})
             await self.message_service.redis_session.push_message(session_key, {"role": "bot", "text": nice_msg, "language": lang})
             return ChatResponse(
@@ -1373,8 +1271,7 @@ class ChatService:
             )
             await self.message_service.redis_session.update_context(
                 session_key,
-                escalation_source="Fallback escalation",
-                support_offer_pending=True,
+                escalation_source="Fallback escalation"
             )
 
             return ChatResponse(
@@ -1386,11 +1283,11 @@ class ChatService:
                 message_id=str(bot_msg["id"]),
                 session_uuid=str(session_uuid),
                 show_feedback=False,
-                requires_email=False,
+                requires_email=True,
                 support_submit_label=None,
                 prefilled_email=prefilled_email,
-                support_comment_enabled=False,
-                show_support_options=False,
+                support_comment_enabled=True,
+                show_support_options=True,
                 allow_recontact=False,
                 show_recontact_confirmation=False,
             )
@@ -1450,15 +1347,6 @@ class ChatService:
             print(f"[Chat] Step 7: Language validation FAILED for '{request.language}' — rewriting...", flush=True)
             answer = await self.llm_client.cleanup_language(answer, request.language)
 
-        trigger_support = self._contains_support_keywords(answer)
-        if trigger_support:
-            answer = f"{answer}\n\n{self._get_support_offer_prompt(request.language or 'en')}"
-            await self.message_service.redis_session.update_context(
-                session_key,
-                escalation_source="Rag escalation",
-                support_offer_pending=True,
-            )
-
         # 8. Save bot message to PG + Redis (sets feedback_state)
         bot_msg = await self.message_service.save_bot_message(
             session_id=session_uuid, session_key=session_key,
@@ -1498,13 +1386,9 @@ class ChatService:
         support_popup_message = None
         escalation_source = None
         if trigger_support:
-            support_popup_message = "Would you like to contact our support team?"
+            support_popup_message = "Please describe your issue for our support team."
             escalation_source = "Rag escalation"
-            await self.message_service.redis_session.update_context(
-                session_key,
-                escalation_source=escalation_source,
-                support_offer_pending=True,
-            )
+            await self.message_service.redis_session.update_context(session_key, escalation_source=escalation_source)
         # If the support popup is being opened for a direct user action (not fallback/unsatisfied/keyword), set escalation_source
         if not fallback_used and not trigger_support and not (hasattr(request, 'unsatisfied_click') and getattr(request, 'unsatisfied_click', False)):
             await self.message_service.redis_session.update_context(session_key, escalation_source="User direct request")
@@ -1519,7 +1403,7 @@ class ChatService:
             session_uuid=str(session_uuid),
             show_feedback=show_feedback,
             show_overall_rating_popup=show_overall_rating_popup,
-            requires_email=False,
+            requires_email=trigger_support,
             support_submit_label=None,
             prefilled_email=None,
             support_comment_enabled=None,

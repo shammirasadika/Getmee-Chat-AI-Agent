@@ -113,7 +113,7 @@ The chatbot now follows a strict, user-friendly message handling order to avoid 
    - → Reply: “I’m here if you need help.” (No RAG, no fallback, no escalation)
 2. **Context Update Detection**
    - Examples: "my name is Alex", "I am Alex"
-   - → Extract and store name in Redis (user_name), reply: “Nice to meet you.” (No RAG, no fallback)
+  - → Extract and store name in Redis (user_name), reply: “Nice to meet you, Alex! How can I help you today?” (No RAG, no fallback)
 3. **Session Context Question**
    - Example: "what is my name?"
    - → Read from Redis. If found: “Your name is [stored_name].” If not: “I don’t have your name yet.” (No RAG, no fallback)
