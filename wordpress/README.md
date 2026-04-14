@@ -21,6 +21,7 @@ wordpress/
 ## 🚀 Getting Started
 
 ### Option 1: Direct File Access (Easiest)
+
 Simply open `index.html` in a browser. The site will work locally without any server setup.
 
 ```bash
@@ -35,6 +36,7 @@ xdg-open index.html
 ```
 
 ### Option 2: Local Server (Recommended for Testing)
+
 For better performance and to avoid CORS issues, run a local server:
 
 ```bash
@@ -89,9 +91,9 @@ In the HTML `<head>` or before the script tag:
 ```html
 <script>
   window.ChatWidgetConfig = {
-    mode: 'floating',              // 'floating' or 'inline'
-    position: 'bottom-right',      // 'bottom-right' or 'bottom-left'
-    chatUrl: 'http://localhost:8080/'  // URL of the chatbot app
+    mode: "floating", // 'floating' or 'inline'
+    position: "bottom-right", // 'bottom-right' or 'bottom-left'
+    chatUrl: "http://localhost:8080/", // URL of the chatbot app
   };
 </script>
 <script src="getmee-chatbot.js"></script>
@@ -100,22 +102,22 @@ In the HTML `<head>` or before the script tag:
 ### Configuration via Script Attributes
 
 ```html
-<script 
+<script
   src="getmee-chatbot.js"
   data-mode="floating"
   data-position="bottom-right"
-  data-chat-url="http://localhost:8080/">
-</script>
+  data-chat-url="http://localhost:8080/"
+></script>
 ```
 
 ### Configuration Options
 
-| Option | Values | Description |
-|--------|--------|-------------|
-| `mode` | `floating`, `inline` | Floating button or embedded in page |
-| `position` | `bottom-right`, `bottom-left` | Position for floating mode |
-| `chatUrl` | URL string | Where the chatbot app is hosted |
-| `targetId` | Element ID | Required for inline mode |
+| Option     | Values                        | Description                         |
+| ---------- | ----------------------------- | ----------------------------------- |
+| `mode`     | `floating`, `inline`          | Floating button or embedded in page |
+| `position` | `bottom-right`, `bottom-left` | Position for floating mode          |
+| `chatUrl`  | URL string                    | Where the chatbot app is hosted     |
+| `targetId` | Element ID                    | Required for inline mode            |
 
 ### Inline Mode Example
 
@@ -126,9 +128,9 @@ For inline embedding in a specific container:
 
 <script>
   window.ChatWidgetConfig = {
-    mode: 'inline',
-    targetId: 'chat-container',
-    chatUrl: 'http://localhost:8080/'
+    mode: "inline",
+    targetId: "chat-container",
+    chatUrl: "http://localhost:8080/",
   };
 </script>
 <script src="getmee-chatbot.js"></script>
@@ -183,7 +185,7 @@ Update the `data-chat-url` in all HTML files:
 ```html
 <script>
   window.ChatWidgetConfig = {
-    chatUrl: 'https://your-chatbot-url.com/'
+    chatUrl: "https://your-chatbot-url.com/",
   };
 </script>
 ```
@@ -191,35 +193,42 @@ Update the `data-chat-url` in all HTML files:
 ## 🧪 Testing the Integration
 
 ### Test Floating Mode
+
 - Open any page
 - Click the floating button in the bottom-right corner
 - Verify the chat widget opens/closes
 
 ### Test Inline Mode
+
 1. Create a test HTML file:
+
 ```html
 <!DOCTYPE html>
 <html>
-<head>
-  <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-  <h1>Inline Chatbot Test</h1>
-  <div id="chat" style="width: 400px; height: 500px; border: 1px solid #ccc;"></div>
-  
-  <script>
-    window.ChatWidgetConfig = {
-      mode: 'inline',
-      targetId: 'chat',
-      chatUrl: 'http://localhost:8080/'
-    };
-  </script>
-  <script src="getmee-chatbot.js"></script>
-</body>
+  <head>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <h1>Inline Chatbot Test</h1>
+    <div
+      id="chat"
+      style="width: 400px; height: 500px; border: 1px solid #ccc;"
+    ></div>
+
+    <script>
+      window.ChatWidgetConfig = {
+        mode: "inline",
+        targetId: "chat",
+        chatUrl: "http://localhost:8080/",
+      };
+    </script>
+    <script src="getmee-chatbot.js"></script>
+  </body>
 </html>
 ```
 
 ### Verify Bot Responses
+
 - Test with various questions
 - Check multilingual support
 - Verify email escalation feature
@@ -267,6 +276,7 @@ add_action('wp_enqueue_scripts', 'enqueue_getmee_chatbot');
 ### Static Site Hosting
 
 Deploy to any static hosting:
+
 - GitHub Pages
 - Netlify
 - Vercel
@@ -282,16 +292,19 @@ Deploy to any static hosting:
 ## 🐛 Troubleshooting
 
 ### Chatbot Not Appearing
+
 - Check console for errors (F12 → Console)
 - Verify `chatUrl` is correct
 - Ensure chatbot server is running
 
 ### Iframe Cross-Origin Issues
+
 - Verify CORS headers are set correctly
 - Check browser console for CORS errors
 - Use HTTPS on production
 
 ### Styling Issues
+
 - Clear browser cache (Ctrl+Shift+R)
 - Check CSS file path
 - Verify media queries for responsive design
@@ -299,6 +312,7 @@ Deploy to any static hosting:
 ## 📞 Support
 
 For issues or questions:
+
 - Check the FAQ section on `contact.html`
 - Review the features page for capabilities
 - Contact support at support@getmee.io

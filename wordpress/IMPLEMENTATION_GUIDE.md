@@ -19,9 +19,9 @@ Add this code to the end of your HTML `<body>` tag:
 ```html
 <script>
   window.ChatWidgetConfig = {
-    mode: 'floating',
-    position: 'bottom-right',
-    chatUrl: 'http://localhost:8080/'
+    mode: "floating",
+    position: "bottom-right",
+    chatUrl: "http://localhost:8080/",
   };
 </script>
 <script src="path/to/getmee-chatbot.js"></script>
@@ -38,9 +38,9 @@ Add a container anywhere in your page:
 
 <script>
   window.ChatWidgetConfig = {
-    mode: 'inline',
-    targetId: 'getmee-widget',
-    chatUrl: 'http://localhost:8080/'
+    mode: "inline",
+    targetId: "getmee-widget",
+    chatUrl: "http://localhost:8080/",
   };
 </script>
 <script src="path/to/getmee-chatbot.js"></script>
@@ -74,19 +74,19 @@ add_action('admin_menu', function() {
 function render_getmee_settings() {
     $chat_url = get_option('getmee_chat_url', 'http://localhost:8080/');
     $position = get_option('getmee_position', 'bottom-right');
-    
+
     ?>
     <div class="wrap">
         <h1>GetMee Chatbot Settings</h1>
         <form method="post" action="options.php">
             <?php settings_fields('getmee-settings'); ?>
-            
+
             <table class="form-table">
                 <tr>
                     <th scope="row"><label for="chat_url">Chat URL</label></th>
                     <td>
-                        <input type="url" id="chat_url" name="getmee_chat_url" 
-                               value="<?php echo esc_url($chat_url); ?>" 
+                        <input type="url" id="chat_url" name="getmee_chat_url"
+                               value="<?php echo esc_url($chat_url); ?>"
                                class="regular-text">
                     </td>
                 </tr>
@@ -100,7 +100,7 @@ function render_getmee_settings() {
                     </td>
                 </tr>
             </table>
-            
+
             <?php submit_button(); ?>
         </form>
     </div>
@@ -172,13 +172,14 @@ add_action('wp_footer', function() {
 
 ```javascript
 window.ChatWidgetConfig = {
-  mode: 'floating',           // Show floating button
-  position: 'bottom-right',   // or 'bottom-left'
-  chatUrl: 'https://chat.yoursite.com/',
+  mode: "floating", // Show floating button
+  position: "bottom-right", // or 'bottom-left'
+  chatUrl: "https://chat.yoursite.com/",
 };
 ```
 
 **Features:**
+
 - Floating chat button
 - Click to open/close panel
 - Mobile responsive
@@ -188,13 +189,14 @@ window.ChatWidgetConfig = {
 
 ```javascript
 window.ChatWidgetConfig = {
-  mode: 'inline',             // Embed directly
-  targetId: 'chat-container', // HTML element ID
-  chatUrl: 'https://chat.yoursite.com/',
+  mode: "inline", // Embed directly
+  targetId: "chat-container", // HTML element ID
+  chatUrl: "https://chat.yoursite.com/",
 };
 ```
 
 **Requirements:**
+
 - Target element must exist
 - Must have width and height
 - Container CSS: `position: relative; overflow: hidden;`
@@ -220,7 +222,7 @@ Create CSS after the widget script:
   border-radius: 24px !important;
   width: 450px !important;
   height: 650px !important;
-  box-shadow: 0 10px 50px rgba(0,0,0,0.2) !important;
+  box-shadow: 0 10px 50px rgba(0, 0, 0, 0.2) !important;
 }
 ```
 
@@ -231,14 +233,14 @@ Create CSS after the widget script:
 ```javascript
 // Initialize with config
 GetMeeChat.init({
-  mode: 'floating',
-  position: 'bottom-right',
-  chatUrl: 'http://localhost:8080/'
+  mode: "floating",
+  position: "bottom-right",
+  chatUrl: "http://localhost:8080/",
 });
 
 // Or re-initialize with new config
 GetMeeChat.init({
-  chatUrl: 'https://new-url.com/'
+  chatUrl: "https://new-url.com/",
 });
 ```
 
@@ -246,9 +248,9 @@ GetMeeChat.init({
 
 ```javascript
 // Detect when widget loads
-window.addEventListener('message', (event) => {
-  if (event.data?.type === 'getmee-ready') {
-    console.log('Chat widget is ready!');
+window.addEventListener("message", (event) => {
+  if (event.data?.type === "getmee-ready") {
+    console.log("Chat widget is ready!");
   }
 });
 ```
@@ -271,6 +273,7 @@ window.addEventListener('message', (event) => {
 ### Widget Not Appearing
 
 **Check:**
+
 1. Correct `chatUrl` pointing to running app
 2. Script loaded after DOM ready
 3. No console errors
@@ -279,6 +282,7 @@ window.addEventListener('message', (event) => {
 ### Communication Not Working
 
 **Check:**
+
 1. CORS headers set correctly
 2. Same protocol (HTTP/HTTPS)
 3. No firewall blocking requests
@@ -287,6 +291,7 @@ window.addEventListener('message', (event) => {
 ### Mobile Issues
 
 **Check:**
+
 1. Viewport meta tag present
 2. Responsive CSS working
 3. Touch events supported
@@ -295,11 +300,13 @@ window.addEventListener('message', (event) => {
 ## 🚀 Production Deployment
 
 1. **Update Chat URL**
+
    ```javascript
-   chatUrl: 'https://your-production-url.com/'
+   chatUrl: "https://your-production-url.com/";
    ```
 
 2. **Enable CORS**
+
    ```python
    CORS_ALLOWED_ORIGINS = [
        "https://yoursite.com",
@@ -319,6 +326,7 @@ window.addEventListener('message', (event) => {
 ## 📞 Support
 
 For issues:
+
 1. Check browser console (F12)
 2. Verify all configuration
 3. Test with simple HTML page first

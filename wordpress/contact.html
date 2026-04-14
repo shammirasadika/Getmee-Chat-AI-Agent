@@ -1,219 +1,459 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Contact GetMee - Get in Touch With Our Team</title>
-    <meta name="description" content="Contact GetMee for sales, support, or partnership inquiries.">
-    <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
+    <meta
+      name="description"
+      content="Contact GetMee for sales, support, or partnership inquiries."
+    />
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
     <!-- Header / Navigation -->
     <header class="header">
-        <div class="container">
-            <div class="logo">
-                <span class="logo-text">GetMee</span>
-            </div>
-            <nav class="nav">
-                <a href="index.html" class="nav-link">Home</a>
-                <a href="about.html" class="nav-link">About</a>
-                <a href="contact.html" class="nav-link active">Contact</a>
-                <a href="features.html" class="nav-link">Features</a>
-            </nav>
+      <div class="container">
+        <div class="logo">
+          <span class="logo-text">GetMee</span>
         </div>
+        <nav class="nav">
+          <a href="index.html" class="nav-link">Home</a>
+          <a href="about.html" class="nav-link">About</a>
+          <a href="contact.html" class="nav-link active">Contact</a>
+          <a href="features.html" class="nav-link">Features</a>
+        </nav>
+      </div>
     </header>
 
     <!-- Hero Section -->
-    <section class="hero" style="min-height: 300px;">
-        <div class="container">
-            <div class="hero-content" style="grid-template-columns: 1fr;">
-                <div>
-                    <h1>Contact Us</h1>
-                    <p>Have questions? We're here to help. Reach out to our team anytime.</p>
-                </div>
-            </div>
+    <section class="hero" style="min-height: 300px">
+      <div class="container">
+        <div class="hero-content" style="grid-template-columns: 1fr">
+          <div>
+            <h1>Contact Us</h1>
+            <p>
+              Have questions? We're here to help. Reach out to our team anytime.
+            </p>
+          </div>
         </div>
+      </div>
     </section>
 
     <!-- Contact Content -->
-    <section class="features" style="background-color: white; padding: 4rem 0;">
-        <div class="container">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; max-width: 1000px; margin: 0 auto;">
-                <!-- Contact Form -->
-                <div>
-                    <h2>Send us a Message</h2>
-                    <form id="contactForm" style="margin-top: 1.5rem;">
-                        <div style="margin-bottom: 1.5rem;">
-                            <label for="name" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--dark-text);">Name</label>
-                            <input type="text" id="name" name="name" required style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 0.5rem; font-size: 1rem;">
-                        </div>
-                        <div style="margin-bottom: 1.5rem;">
-                            <label for="email" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--dark-text);">Email</label>
-                            <input type="email" id="email" name="email" required style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 0.5rem; font-size: 1rem;">
-                        </div>
-                        <div style="margin-bottom: 1.5rem;">
-                            <label for="subject" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--dark-text);">Subject</label>
-                            <select id="subject" name="subject" required style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 0.5rem; font-size: 1rem;">
-                                <option value="">Select a subject</option>
-                                <option value="sales">Sales Inquiry</option>
-                                <option value="support">Support</option>
-                                <option value="partnership">Partnership</option>
-                                <option value="feedback">Feedback</option>
-                                <option value="other">Other</option>
-                            </select>
-                        </div>
-                        <div style="margin-bottom: 1.5rem;">
-                            <label for="message" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: var(--dark-text);">Message</label>
-                            <textarea id="message" name="message" rows="5" required style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 0.5rem; font-size: 1rem; resize: vertical;"></textarea>
-                        </div>
-                        <button type="submit" class="btn btn-primary" style="width: 100%;">Send Message</button>
-                    </form>
-                </div>
+    <section class="features" style="background-color: white; padding: 4rem 0">
+      <div class="container">
+        <div
+          style="
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3rem;
+            max-width: 1000px;
+            margin: 0 auto;
+          "
+        >
+          <!-- Contact Form -->
+          <div>
+            <h2>Send us a Message</h2>
+            <form id="contactForm" style="margin-top: 1.5rem">
+              <div style="margin-bottom: 1.5rem">
+                <label
+                  for="name"
+                  style="
+                    display: block;
+                    margin-bottom: 0.5rem;
+                    font-weight: 500;
+                    color: var(--dark-text);
+                  "
+                  >Name</label
+                >
+                <input
+                  type="text"
+                  id="name"
+                  name="name"
+                  required
+                  style="
+                    width: 100%;
+                    padding: 0.75rem;
+                    border: 1px solid var(--border-color);
+                    border-radius: 0.5rem;
+                    font-size: 1rem;
+                  "
+                />
+              </div>
+              <div style="margin-bottom: 1.5rem">
+                <label
+                  for="email"
+                  style="
+                    display: block;
+                    margin-bottom: 0.5rem;
+                    font-weight: 500;
+                    color: var(--dark-text);
+                  "
+                  >Email</label
+                >
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  required
+                  style="
+                    width: 100%;
+                    padding: 0.75rem;
+                    border: 1px solid var(--border-color);
+                    border-radius: 0.5rem;
+                    font-size: 1rem;
+                  "
+                />
+              </div>
+              <div style="margin-bottom: 1.5rem">
+                <label
+                  for="subject"
+                  style="
+                    display: block;
+                    margin-bottom: 0.5rem;
+                    font-weight: 500;
+                    color: var(--dark-text);
+                  "
+                  >Subject</label
+                >
+                <select
+                  id="subject"
+                  name="subject"
+                  required
+                  style="
+                    width: 100%;
+                    padding: 0.75rem;
+                    border: 1px solid var(--border-color);
+                    border-radius: 0.5rem;
+                    font-size: 1rem;
+                  "
+                >
+                  <option value="">Select a subject</option>
+                  <option value="sales">Sales Inquiry</option>
+                  <option value="support">Support</option>
+                  <option value="partnership">Partnership</option>
+                  <option value="feedback">Feedback</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div style="margin-bottom: 1.5rem">
+                <label
+                  for="message"
+                  style="
+                    display: block;
+                    margin-bottom: 0.5rem;
+                    font-weight: 500;
+                    color: var(--dark-text);
+                  "
+                  >Message</label
+                >
+                <textarea
+                  id="message"
+                  name="message"
+                  rows="5"
+                  required
+                  style="
+                    width: 100%;
+                    padding: 0.75rem;
+                    border: 1px solid var(--border-color);
+                    border-radius: 0.5rem;
+                    font-size: 1rem;
+                    resize: vertical;
+                  "
+                ></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary" style="width: 100%">
+                Send Message
+              </button>
+            </form>
+          </div>
 
-                <!-- Contact Info -->
-                <div>
-                    <h2>Contact Information</h2>
-                    <div style="margin-top: 2rem; display: flex; flex-direction: column; gap: 2rem;">
-                        <div>
-                            <h3 style="color: var(--primary-color); margin-bottom: 0.5rem;">📍 Address</h3>
-                            <p style="color: #666;">
-                                GetMee Inc.<br>
-                                Tech Hub, Silicon Valley<br>
-                                CA 94025, USA
-                            </p>
-                        </div>
-                        <div>
-                            <h3 style="color: var(--primary-color); margin-bottom: 0.5rem;">📞 Phone</h3>
-                            <p style="color: #666;">
-                                +1 (555) 123-4567<br>
-                                <span style="font-size: 0.9rem;">Mon-Fri, 9AM-6PM PST</span>
-                            </p>
-                        </div>
-                        <div>
-                            <h3 style="color: var(--primary-color); margin-bottom: 0.5rem;">✉️ Email</h3>
-                            <p style="color: #666;">
-                                sales@getmee.io<br>
-                                support@getmee.io<br>
-                                partnerships@getmee.io
-                            </p>
-                        </div>
-                        <div>
-                            <h3 style="color: var(--primary-color); margin-bottom: 0.5rem;">🌐 Social Media</h3>
-                            <p style="color: #666;">
-                                <a href="#" style="color: var(--primary-color); text-decoration: none; margin-right: 1rem;">Twitter</a>
-                                <a href="#" style="color: var(--primary-color); text-decoration: none; margin-right: 1rem;">LinkedIn</a>
-                                <a href="#" style="color: var(--primary-color); text-decoration: none;">GitHub</a>
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Quick Links -->
-                    <div style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--border-color);">
-                        <h3 style="color: var(--dark-text); margin-bottom: 1rem;">Quick Links</h3>
-                        <ul style="list-style: none;">
-                            <li style="margin-bottom: 0.5rem;"><a href="#" style="color: var(--primary-color); text-decoration: none;">→ Documentation</a></li>
-                            <li style="margin-bottom: 0.5rem;"><a href="#" style="color: var(--primary-color); text-decoration: none;">→ FAQ</a></li>
-                            <li style="margin-bottom: 0.5rem;"><a href="#" style="color: var(--primary-color); text-decoration: none;">→ Status Page</a></li>
-                            <li style="margin-bottom: 0.5rem;"><a href="#" style="color: var(--primary-color); text-decoration: none;">→ API Reference</a></li>
-                        </ul>
-                    </div>
-                </div>
+          <!-- Contact Info -->
+          <div>
+            <h2>Contact Information</h2>
+            <div
+              style="
+                margin-top: 2rem;
+                display: flex;
+                flex-direction: column;
+                gap: 2rem;
+              "
+            >
+              <div>
+                <h3 style="color: var(--primary-color); margin-bottom: 0.5rem">
+                  📍 Address
+                </h3>
+                <p style="color: #666">
+                  GetMee Inc.<br />
+                  Tech Hub, Silicon Valley<br />
+                  CA 94025, USA
+                </p>
+              </div>
+              <div>
+                <h3 style="color: var(--primary-color); margin-bottom: 0.5rem">
+                  📞 Phone
+                </h3>
+                <p style="color: #666">
+                  +1 (555) 123-4567<br />
+                  <span style="font-size: 0.9rem">Mon-Fri, 9AM-6PM PST</span>
+                </p>
+              </div>
+              <div>
+                <h3 style="color: var(--primary-color); margin-bottom: 0.5rem">
+                  ✉️ Email
+                </h3>
+                <p style="color: #666">
+                  sales@getmee.io<br />
+                  support@getmee.io<br />
+                  partnerships@getmee.io
+                </p>
+              </div>
+              <div>
+                <h3 style="color: var(--primary-color); margin-bottom: 0.5rem">
+                  🌐 Social Media
+                </h3>
+                <p style="color: #666">
+                  <a
+                    href="#"
+                    style="
+                      color: var(--primary-color);
+                      text-decoration: none;
+                      margin-right: 1rem;
+                    "
+                    >Twitter</a
+                  >
+                  <a
+                    href="#"
+                    style="
+                      color: var(--primary-color);
+                      text-decoration: none;
+                      margin-right: 1rem;
+                    "
+                    >LinkedIn</a
+                  >
+                  <a
+                    href="#"
+                    style="color: var(--primary-color); text-decoration: none"
+                    >GitHub</a
+                  >
+                </p>
+              </div>
             </div>
+
+            <!-- Quick Links -->
+            <div
+              style="
+                margin-top: 2rem;
+                padding-top: 2rem;
+                border-top: 1px solid var(--border-color);
+              "
+            >
+              <h3 style="color: var(--dark-text); margin-bottom: 1rem">
+                Quick Links
+              </h3>
+              <ul style="list-style: none">
+                <li style="margin-bottom: 0.5rem">
+                  <a
+                    href="#"
+                    style="color: var(--primary-color); text-decoration: none"
+                    >→ Documentation</a
+                  >
+                </li>
+                <li style="margin-bottom: 0.5rem">
+                  <a
+                    href="#"
+                    style="color: var(--primary-color); text-decoration: none"
+                    >→ FAQ</a
+                  >
+                </li>
+                <li style="margin-bottom: 0.5rem">
+                  <a
+                    href="#"
+                    style="color: var(--primary-color); text-decoration: none"
+                    >→ Status Page</a
+                  >
+                </li>
+                <li style="margin-bottom: 0.5rem">
+                  <a
+                    href="#"
+                    style="color: var(--primary-color); text-decoration: none"
+                    >→ API Reference</a
+                  >
+                </li>
+              </ul>
+            </div>
+          </div>
         </div>
+      </div>
     </section>
 
     <!-- Response Message -->
-    <div id="formMessage" style="display: none; position: fixed; top: 100px; left: 50%; transform: translateX(-50%); background: #4caf50; color: white; padding: 1rem 2rem; border-radius: 0.5rem; z-index: 10000; box-shadow: var(--shadow-lg);">
-        Thank you! We'll get back to you soon.
+    <div
+      id="formMessage"
+      style="
+        display: none;
+        position: fixed;
+        top: 100px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #4caf50;
+        color: white;
+        padding: 1rem 2rem;
+        border-radius: 0.5rem;
+        z-index: 10000;
+        box-shadow: var(--shadow-lg);
+      "
+    >
+      Thank you! We'll get back to you soon.
     </div>
 
     <!-- FAQ Section -->
-    <section class="features" style="background-color: var(--light-bg); padding: 4rem 0;">
-        <div class="container">
-            <h2 style="text-align: center; margin-bottom: 3rem;">Frequently Asked Questions</h2>
-            <div style="max-width: 800px; margin: 0 auto;">
-                <div style="background: white; padding: 1.5rem; border-radius: 0.5rem; margin-bottom: 1rem; box-shadow: var(--shadow);">
-                    <h3 style="color: var(--dark-text); margin-bottom: 0.5rem;">What's the setup time?</h3>
-                    <p style="color: #666;">Most integrations are complete in under 30 minutes. We provide step-by-step guidance and dedicated support.</p>
-                </div>
-                <div style="background: white; padding: 1.5rem; border-radius: 0.5rem; margin-bottom: 1rem; box-shadow: var(--shadow);">
-                    <h3 style="color: var(--dark-text); margin-bottom: 0.5rem;">Do you offer trial period?</h3>
-                    <p style="color: #666;">Yes! We offer a 14-day free trial with full access to all features. No credit card required.</p>
-                </div>
-                <div style="background: white; padding: 1.5rem; border-radius: 0.5rem; margin-bottom: 1rem; box-shadow: var(--shadow);">
-                    <h3 style="color: var(--dark-text); margin-bottom: 0.5rem;">Is my data secure?</h3>
-                    <p style="color: #666;">Absolutely. We use bank-level encryption and comply with GDPR, SOC 2, and HIPAA standards.</p>
-                </div>
-                <div style="background: white; padding: 1.5rem; border-radius: 0.5rem; margin-bottom: 1rem; box-shadow: var(--shadow);">
-                    <h3 style="color: var(--dark-text); margin-bottom: 0.5rem;">Can I integrate with my existing CRM?</h3>
-                    <p style="color: #666;">Yes. We support integrations with Salesforce, HubSpot, Zendesk, and 100+ other platforms.</p>
-                </div>
-            </div>
+    <section
+      class="features"
+      style="background-color: var(--light-bg); padding: 4rem 0"
+    >
+      <div class="container">
+        <h2 style="text-align: center; margin-bottom: 3rem">
+          Frequently Asked Questions
+        </h2>
+        <div style="max-width: 800px; margin: 0 auto">
+          <div
+            style="
+              background: white;
+              padding: 1.5rem;
+              border-radius: 0.5rem;
+              margin-bottom: 1rem;
+              box-shadow: var(--shadow);
+            "
+          >
+            <h3 style="color: var(--dark-text); margin-bottom: 0.5rem">
+              What's the setup time?
+            </h3>
+            <p style="color: #666">
+              Most integrations are complete in under 30 minutes. We provide
+              step-by-step guidance and dedicated support.
+            </p>
+          </div>
+          <div
+            style="
+              background: white;
+              padding: 1.5rem;
+              border-radius: 0.5rem;
+              margin-bottom: 1rem;
+              box-shadow: var(--shadow);
+            "
+          >
+            <h3 style="color: var(--dark-text); margin-bottom: 0.5rem">
+              Do you offer trial period?
+            </h3>
+            <p style="color: #666">
+              Yes! We offer a 14-day free trial with full access to all
+              features. No credit card required.
+            </p>
+          </div>
+          <div
+            style="
+              background: white;
+              padding: 1.5rem;
+              border-radius: 0.5rem;
+              margin-bottom: 1rem;
+              box-shadow: var(--shadow);
+            "
+          >
+            <h3 style="color: var(--dark-text); margin-bottom: 0.5rem">
+              Is my data secure?
+            </h3>
+            <p style="color: #666">
+              Absolutely. We use bank-level encryption and comply with GDPR, SOC
+              2, and HIPAA standards.
+            </p>
+          </div>
+          <div
+            style="
+              background: white;
+              padding: 1.5rem;
+              border-radius: 0.5rem;
+              margin-bottom: 1rem;
+              box-shadow: var(--shadow);
+            "
+          >
+            <h3 style="color: var(--dark-text); margin-bottom: 0.5rem">
+              Can I integrate with my existing CRM?
+            </h3>
+            <p style="color: #666">
+              Yes. We support integrations with Salesforce, HubSpot, Zendesk,
+              and 100+ other platforms.
+            </p>
+          </div>
         </div>
+      </div>
     </section>
 
     <!-- Footer -->
     <footer class="footer">
-        <div class="container">
-            <div class="footer-content">
-                <div class="footer-column">
-                    <h4>Product</h4>
-                    <a href="#">Features</a>
-                    <a href="#">Pricing</a>
-                    <a href="#">Security</a>
-                </div>
-                <div class="footer-column">
-                    <h4>Company</h4>
-                    <a href="#">About</a>
-                    <a href="#">Blog</a>
-                    <a href="#">Careers</a>
-                </div>
-                <div class="footer-column">
-                    <h4>Resources</h4>
-                    <a href="#">Documentation</a>
-                    <a href="#">API Reference</a>
-                    <a href="#">Support</a>
-                </div>
-                <div class="footer-column">
-                    <h4>Legal</h4>
-                    <a href="#">Privacy</a>
-                    <a href="#">Terms</a>
-                    <a href="#">Compliance</a>
-                </div>
-            </div>
-            <div class="footer-bottom">
-                <p>&copy; 2026 GetMee. All rights reserved.</p>
-            </div>
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-column">
+            <h4>Product</h4>
+            <a href="#">Features</a>
+            <a href="#">Pricing</a>
+            <a href="#">Security</a>
+          </div>
+          <div class="footer-column">
+            <h4>Company</h4>
+            <a href="#">About</a>
+            <a href="#">Blog</a>
+            <a href="#">Careers</a>
+          </div>
+          <div class="footer-column">
+            <h4>Resources</h4>
+            <a href="#">Documentation</a>
+            <a href="#">API Reference</a>
+            <a href="#">Support</a>
+          </div>
+          <div class="footer-column">
+            <h4>Legal</h4>
+            <a href="#">Privacy</a>
+            <a href="#">Terms</a>
+            <a href="#">Compliance</a>
+          </div>
         </div>
+        <div class="footer-bottom">
+          <p>&copy; 2026 GetMee. All rights reserved.</p>
+        </div>
+      </div>
     </footer>
 
     <!-- GetMee Chatbot Widget Script -->
     <script>
-        window.ChatWidgetConfig = {
-            mode: 'floating',
-            position: 'bottom-right',
-            chatUrl: 'http://localhost:8080/'
-        };
+      window.ChatWidgetConfig = {
+        mode: "floating",
+        position: "bottom-right",
+        chatUrl: "http://localhost:8080/",
+      };
     </script>
     <script src="getmee-chatbot.js"></script>
 
     <!-- Form Handler -->
     <script>
-        document.getElementById('contactForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            // Show success message
-            const messageDiv = document.getElementById('formMessage');
-            messageDiv.style.display = 'block';
-            
-            // Reset form
-            this.reset();
-            
-            // Hide message after 5 seconds
-            setTimeout(() => {
-                messageDiv.style.display = 'none';
-            }, 5000);
+      document
+        .getElementById("contactForm")
+        .addEventListener("submit", function (e) {
+          e.preventDefault();
+
+          // Show success message
+          const messageDiv = document.getElementById("formMessage");
+          messageDiv.style.display = "block";
+
+          // Reset form
+          this.reset();
+
+          // Hide message after 5 seconds
+          setTimeout(() => {
+            messageDiv.style.display = "none";
+          }, 5000);
         });
     </script>
-</body>
+  </body>
 </html>
