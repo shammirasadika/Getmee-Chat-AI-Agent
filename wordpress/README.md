@@ -2,7 +2,7 @@
 
 ## Overview
 
-This folder contains a complete WordPress/HTML website integration demonstrating how to embed the GetMee AI Chatbot into a website. This is a sample single-page WordPress-like site built with HTML, CSS, and vanilla JavaScript for testing the chatbot embedding.
+This folder contains a complete WordPress/HTML website integration demonstrating how to embed the GetMee AI Chatbot into a website. This is a sample single-page WordPress-like site built with HTML, CSS, and vanilla JavaScript for testing the chatbot embedding.(testing purpose only)
 
 ## 📁 Folder Structure
 
