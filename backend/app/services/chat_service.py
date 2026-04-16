@@ -1212,6 +1212,59 @@ class ChatService:
         print(f"[Chat] Step 6: Generating answer in '{request.language}' (retrieval was '{retrieval_language}')", flush=True)
         answer = await self.llm_client.generate(prompt, language=request.language)
 
+        # 6b. Post-LLM guard: if LLM says it couldn't find info, convert to fallback
+        import unicodedata
+        _answer_norm = ''.join(
+            c for c in unicodedata.normalize('NFKD', answer.lower())
+            if not unicodedata.combining(c)
+        )
+        _no_info_patterns = [
+            "no pude encontrar informacion",
+            "no pude encontrar una respuesta",
+            "no encontre informacion",
+            "i couldn't find information",
+            "i could not find information",
+            "i couldn't find relevant",
+            "i could not find relevant",
+            "no relevant information was found",
+            "couldn't find information",
+        ]
+        if any(p in _answer_norm for p in _no_info_patterns):
+            print(f"[Chat] POST-LLM GUARD: LLM returned a 'no info' answer — replacing with fallback", flush=True)
+            fallback_message = self._get_first_support_prompt(request.language or "en")
+            support_context = await self._get_support_context(session_key)
+            prefilled_email = support_context.get("support_email") if support_context else None
+
+            bot_msg = await self.message_service.save_bot_message(
+                session_id=session_uuid, session_key=session_key,
+                text=fallback_message, language=request.language,
+                fallback_used=True, source_type="fallback",
+            )
+            await self.session_service.save_turn(
+                request.session_id,
+                {"user": request.message, "bot": fallback_message}
+            )
+            await self.message_service.redis_session.update_context(
+                session_key, escalation_source="Fallback escalation"
+            )
+            return ChatResponse(
+                answer=fallback_message,
+                language=request.language,
+                sources=[],
+                fallback_used=True,
+                retrieval_language=retrieval_language,
+                message_id=str(bot_msg["id"]),
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+                requires_email=True,
+                support_submit_label=None,
+                prefilled_email=prefilled_email,
+                support_comment_enabled=True,
+                show_support_options=True,
+                allow_recontact=False,
+                show_recontact_confirmation=False,
+            )
+
         # 7. Validate language
         if not is_language_clean(answer, request.language):
             print(f"[Chat] Step 7: Language validation FAILED for '{request.language}' — rewriting...", flush=True)
