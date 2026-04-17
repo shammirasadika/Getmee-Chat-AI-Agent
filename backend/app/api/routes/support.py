@@ -26,6 +26,22 @@ async def submit_support_request(request: SupportSubmitRequest):
         # --- Redis-based support state tracking and repeat submission prevention ---
         redis_session = session_service.redis_session
         support_state = await redis_session.get_support_state(request.session_id)
+
+        # --- Check session-level support count limit (max 2) ---
+        context = await redis_session.get_context(request.session_id)
+        support_count = (context or {}).get("support_request_count", 0)
+        if support_count >= 2:
+            lang = (request.language or 'en').lower()
+            limit_msg = {
+                'en': "You have already contacted support twice in this session. Our team will get back to you soon.",
+                'es': "Ya has contactado al soporte dos veces en esta sesión. Nuestro equipo se comunicará contigo pronto."
+            }
+            return SupportSubmitResponse(
+                success=False,
+                message=limit_msg.get(lang, limit_msg['en']),
+                request_id=None,
+            )
+
         if support_state and support_state.get("support_request_sent"):
             # Already submitted, block repeat
             from app.services.chat_service import STATIC_RESPONSES

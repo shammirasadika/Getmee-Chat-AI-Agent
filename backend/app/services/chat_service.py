@@ -1268,6 +1268,8 @@ class ChatService:
                 escalation_source="Fallback escalation"
             )
 
+            await self._prepare_new_support_submission(session_key)
+
             return ChatResponse(
                 answer=fallback_message,
                 language=request.language,
@@ -1346,6 +1348,9 @@ class ChatService:
             await self.message_service.redis_session.update_context(
                 session_key, escalation_source="Fallback escalation"
             )
+
+            await self._prepare_new_support_submission(session_key)
+
             return ChatResponse(
                 answer=fallback_message,
                 language=request.language,

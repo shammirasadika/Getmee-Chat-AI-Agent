@@ -726,11 +726,7 @@ const ChatWidget = () => {
                     <button
                       onClick={() => {
                         setFeedbackMap((prev) => ({ ...prev, '__satisfaction__': 'unsatisfied' }));
-                        setSupportPopupMessage(i.emailPrompt);
-                        setSupportSubmitLabel(i.submit);
-                        setSupportComment("");
-                        setSupportEmail("");
-                        setShowSupportForm(true);
+                        sendToApi("unsatisfied", { unsatisfied_click: true });
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive/5 text-destructive border border-destructive/20 hover:bg-destructive/15 hover:border-destructive/40 hover:shadow-sm active:scale-95 transition-all"
                     >
