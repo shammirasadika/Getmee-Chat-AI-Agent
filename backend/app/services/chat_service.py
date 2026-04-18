@@ -200,6 +200,56 @@ class ChatService:
         ]
         answer_lower = answer.lower()
         return any(kw in answer_lower for kw in keywords)
+
+    def _is_support_intent(self, user_message: str) -> bool:
+        """Detect if the user is asking to contact support or reach a human."""
+        text = user_message.lower().strip()
+        support_phrases = [
+            # English
+            "how do i get support",
+            "how can i get support",
+            "how do i contact support",
+            "how can i contact support",
+            "contact support",
+            "human support",
+            "talk to human",
+            "talk to a human",
+            "talk to a person",
+            "speak to an agent",
+            "speak to support",
+            "connect me to support",
+            "reach support",
+            "customer support",
+            "need human help",
+            "i need support",
+            # Spanish
+            "cómo contacto soporte",
+            "cómo puedo contactar soporte",
+            "contactar soporte",
+            "soporte humano",
+            "hablar con un humano",
+            "hablar con una persona",
+            "hablar con un agente",
+            "hablar con soporte",
+            "necesito soporte",
+            "necesito ayuda humana",
+            "conectar con soporte",
+            "atención al cliente",
+            "quiero hablar con alguien",
+            "quiero hablar con una persona",
+            "quiero contactar soporte",
+            "cómo hablo con soporte",
+            "necesito hablar con alguien",
+        ]
+        if any(phrase in text for phrase in support_phrases):
+            return True
+        contact_words = ["contact", "reach", "talk", "speak", "connect", "get",
+                         "contactar", "hablar", "comunicar", "conectar", "llegar"]
+        support_words = ["support", "human", "agent", "team", "staff", "person",
+                         "soporte", "humano", "agente", "equipo", "persona", "asistente"]
+        has_contact = any(word in text for word in contact_words)
+        has_support = any(word in text for word in support_words)
+        return has_contact and has_support
     def _get_unsatisfied_support_prompt(self, language: str) -> str:
         messages = {
             "en": "Please provide your email address so our support team can contact you.",
@@ -1007,8 +1057,57 @@ class ChatService:
                 support_submit_label=None,
             )
 
-        # 2. Support intent detection (if any, not shown in this excerpt)
-        # ...existing support intent logic if present...
+        # 2. Support intent detection — check user message BEFORE RAG retrieval
+        if self._is_support_intent(request.message):
+            support_context = await self._get_support_context(session_key)
+            if self._is_support_limit_reached(support_context):
+                return ChatResponse(
+                    answer=self._get_direct_support_limit_message(lang),
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
+            if support_context.get("support_request_sent"):
+                confirmation_msg = {
+                    "en": "Your request has already been submitted to human support for this session. Do you want to contact support again?",
+                    "es": "Tu consulta ya fue enviada al soporte humano en esta sesión. ¿Quieres contactar al soporte nuevamente?"
+                }.get(lang, "Your request has already been submitted. Do you want to contact support again?")
+                return ChatResponse(
+                    answer=confirmation_msg,
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                    show_recontact_confirmation=True,
+                    prefilled_email=support_context.get("support_email"),
+                )
+            await self._prepare_new_support_submission(session_key)
+            await self.message_service.redis_session.update_context(session_key, escalation_source="Support intent")
+            support_answer = {
+                "en": "You can contact our support team by sharing your email below. A team member will get back to you shortly.",
+                "es": "Puedes contactar a nuestro equipo de soporte compartiendo tu correo electrónico a continuación. Un miembro del equipo se pondrá en contacto contigo en breve.",
+            }.get(lang, "You can contact our support team by sharing your email below. A team member will get back to you shortly.")
+            return ChatResponse(
+                answer=support_answer,
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=True,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+                escalation_source="Support intent",
+            )
 
         # 3. Small talk and low intent detection (language-agnostic input, language-specific output)
         lang = request.language or 'en'
@@ -1264,6 +1363,8 @@ class ChatService:
                 escalation_source="Fallback escalation"
             )
 
+            await self._prepare_new_support_submission(session_key)
+
             return ChatResponse(
                 answer=fallback_message,
                 language=request.language,
@@ -1342,6 +1443,9 @@ class ChatService:
             await self.message_service.redis_session.update_context(
                 session_key, escalation_source="Fallback escalation"
             )
+
+            await self._prepare_new_support_submission(session_key)
+
             return ChatResponse(
                 answer=fallback_message,
                 language=request.language,
@@ -1384,7 +1488,6 @@ class ChatService:
             intent = self._detect_low_intent_pattern(request.message)
         is_meaningful = not (
             fallback_used
-            or self._contains_support_keywords(answer)
             or intent
         )
         if is_meaningful:
@@ -1400,15 +1503,10 @@ class ChatService:
         show_overall_rating_popup = (overall_count % self.OVERALL_RATING_INTERVAL == 0) if overall_count > 0 else False
 
         # Debug print removed
-        trigger_support = self._contains_support_keywords(answer)
         support_popup_message = None
         escalation_source = None
-        if trigger_support:
-            support_popup_message = "Please describe your issue for our support team."
-            escalation_source = "Rag escalation"
-            await self.message_service.redis_session.update_context(session_key, escalation_source=escalation_source)
-        # If the support popup is being opened for a direct user action (not fallback/unsatisfied/keyword), set escalation_source
-        if not fallback_used and not trigger_support and not (hasattr(request, 'unsatisfied_click') and getattr(request, 'unsatisfied_click', False)):
+        # If the support popup is being opened for a direct user action (not fallback/unsatisfied), set escalation_source
+        if not fallback_used and not (hasattr(request, 'unsatisfied_click') and getattr(request, 'unsatisfied_click', False)):
             await self.message_service.redis_session.update_context(session_key, escalation_source="User direct request")
             escalation_source = "User direct request"
         return ChatResponse(
@@ -1421,7 +1519,7 @@ class ChatService:
             session_uuid=str(session_uuid),
             show_feedback=show_feedback,
             show_overall_rating_popup=show_overall_rating_popup,
-            requires_email=trigger_support,
+            requires_email=False,
             support_submit_label=None,
             prefilled_email=None,
             support_comment_enabled=None,

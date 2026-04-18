@@ -100,6 +100,8 @@ type Message = {
   isUser: boolean;
   time: string;
   messageId?: string;
+  show_feedback?: boolean;
+  isSatisfactionPrompt?: boolean;
 };
 
 const getTime = () =>
@@ -149,6 +151,8 @@ const ChatWidget = () => {
   const [pendingSessionRating, setPendingSessionRating] = useState(false);
   const [sessionRating, setSessionRating] = useState(0);
   const [feedbackMap, setFeedbackMap] = useState<{[key: string]: string}>({});
+  const [meaningfulAnswerCount, setMeaningfulAnswerCount] = useState(0);
+  const [satisfactionShown, setSatisfactionShown] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isClosed, setIsClosed] = useState(false);
   const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
@@ -198,10 +202,27 @@ const ChatWidget = () => {
       console.log("[ChatWidget] API response:", data);
 
       // Always show bot answer as chat bubble
-      setMessages((prev) => [
-        ...prev,
-        { text: data.answer, isUser: false, time: getTime(), messageId: data.message_id, show_feedback: data.show_feedback },
-      ]);
+      const isKbAnswer = data.show_feedback !== false && !data.fallback_used && !data.requires_email;
+      const newMeaningfulCount = isKbAnswer ? meaningfulAnswerCount + 1 : meaningfulAnswerCount;
+      if (isKbAnswer) setMeaningfulAnswerCount(newMeaningfulCount);
+
+      setMessages((prev) => {
+        const updated = [
+          ...prev,
+          { text: data.answer, isUser: false, time: getTime(), messageId: data.message_id, show_feedback: data.show_feedback },
+        ];
+        // After 2 meaningful KB answers, show a separate satisfaction prompt bubble
+        if (isKbAnswer && newMeaningfulCount >= 2 && !satisfactionShown) {
+          setSatisfactionShown(true);
+          updated.push({
+            text: lang === 'es' ? '¿Estás satisfecho con la ayuda del asistente?' : 'Are you satisfied with the assistant\'s help?',
+            isUser: false,
+            time: getTime(),
+            isSatisfactionPrompt: true,
+          });
+        }
+        return updated;
+      });
       setShowSessionRating(!!data.show_overall_rating_popup);
 
       // Store escalation_source from backend if present
@@ -686,53 +707,52 @@ const ChatWidget = () => {
                 >
                   {msg.time}
                 </span>
-                {/* Feedback buttons for bot messages, only if show_feedback is true */}
-                {!msg.isUser && msg.messageId && msg.show_feedback !== false && (
+                {/* Satisfaction prompt bubble with buttons */}
+                {msg.isSatisfactionPrompt && !feedbackMap['__satisfaction__'] && (
                   <div className="flex items-center gap-2.5 ml-10 mt-2">
-                    {feedbackMap[msg.messageId] === "sending" ? (
-                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50 border border-border/40">
-                        <Loader2 size={14} className="animate-spin text-primary" />
-                        <span className="text-xs text-muted-foreground">Submitting...</span>
-                      </div>
-                    ) : feedbackMap[msg.messageId] ? (
-                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${
-                        feedbackMap[msg.messageId] === "positive"
-                          ? "bg-primary/5 border-primary/20"
-                          : "bg-destructive/5 border-destructive/20"
-                      }`}>
-                        {feedbackMap[msg.messageId] === "positive" ? (
-                          <SmilePlus size={15} className="text-primary" />
-                        ) : (
-                          <Frown size={15} className="text-destructive" />
-                        )}
-                        <span className={`text-xs font-semibold ${
-                          feedbackMap[msg.messageId] === "positive" ? "text-primary" : "text-destructive"
-                        }`}>
-                          {feedbackMap[msg.messageId] === "positive" ? i.satisfied || (lang === 'es' ? 'Satisfecho' : 'Satisfied') : i.not_satisfied || (lang === 'es' ? 'No satisfecho' : 'Not Satisfied')}
-                        </span>
-                        <span className="text-xs text-muted-foreground">— {i.feedback_thank_you || (lang === 'es' ? '¡Gracias por tus comentarios!' : 'Thank you!')}</span>
-                      </div>
+                    <button
+                      onClick={() => {
+                        setFeedbackMap((prev) => ({ ...prev, '__satisfaction__': 'satisfied' }));
+                        setMessages((prev) => [
+                          ...prev,
+                          { text: lang === 'es' ? '¡Me alegra haber podido ayudar! 😊 Avísame si necesitas algo más.' : 'Glad I could help! 😊 Let me know if you need anything else.', isUser: false, time: getTime() },
+                        ]);
+                        setShowSessionRating(true);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary/5 text-primary border border-primary/20 hover:bg-primary/15 hover:border-primary/40 hover:shadow-sm active:scale-95 transition-all"
+                    >
+                      <SmilePlus size={15} />
+                      {i.satisfied || (lang === 'es' ? 'Satisfecho' : 'Satisfied')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFeedbackMap((prev) => ({ ...prev, '__satisfaction__': 'unsatisfied' }));
+                        sendToApi("unsatisfied", { unsatisfied_click: true });
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive/5 text-destructive border border-destructive/20 hover:bg-destructive/15 hover:border-destructive/40 hover:shadow-sm active:scale-95 transition-all"
+                    >
+                      <Frown size={15} />
+                      {i.not_satisfied || (lang === 'es' ? 'No satisfecho' : 'Not Satisfied')}
+                    </button>
+                  </div>
+                )}
+                {msg.isSatisfactionPrompt && feedbackMap['__satisfaction__'] && (
+                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ml-10 mt-2 ${
+                    feedbackMap['__satisfaction__'] === 'satisfied'
+                      ? "bg-primary/5 border-primary/20"
+                      : "bg-destructive/5 border-destructive/20"
+                  }`}>
+                    {feedbackMap['__satisfaction__'] === 'satisfied' ? (
+                      <SmilePlus size={15} className="text-primary" />
                     ) : (
-                      <>
-                        <span className="text-[11px] text-muted-foreground/60 mr-0.5">{i.was_this_helpful || (lang === 'es' ? '¿Fue útil?' : 'Was this helpful?')}</span>
-                        <button
-                          onClick={() => handleFeedback(msg.messageId!, "positive")}
-                          disabled={inFlightFeedbackRef.current.has(msg.messageId!)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary/5 text-primary border border-primary/20 hover:bg-primary/15 hover:border-primary/40 hover:shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <SmilePlus size={15} />
-                          {i.satisfied || (lang === 'es' ? 'Satisfecho' : 'Satisfied')}
-                        </button>
-                        <button
-                          onClick={() => handleFeedback(msg.messageId!, "negative")}
-                          disabled={inFlightFeedbackRef.current.has(msg.messageId!)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive/5 text-destructive border border-destructive/20 hover:bg-destructive/15 hover:border-destructive/40 hover:shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <Frown size={15} />
-                          {i.not_satisfied || (lang === 'es' ? 'No satisfecho' : 'Not Satisfied')}
-                        </button>
-                      </>
+                      <Frown size={15} className="text-destructive" />
                     )}
+                    <span className={`text-xs font-semibold ${
+                      feedbackMap['__satisfaction__'] === 'satisfied' ? "text-primary" : "text-destructive"
+                    }`}>
+                      {feedbackMap['__satisfaction__'] === 'satisfied' ? i.satisfied || (lang === 'es' ? 'Satisfecho' : 'Satisfied') : i.not_satisfied || (lang === 'es' ? 'No satisfecho' : 'Not Satisfied')}
+                    </span>
+                    <span className="text-xs text-muted-foreground">— {i.feedback_thank_you || (lang === 'es' ? '¡Gracias por tus comentarios!' : 'Thank you!')}</span>
                   </div>
                 )}
               </div>
