@@ -1,4 +1,6 @@
-from chroma_client import get_collection
+from chroma_client import get_chroma_client
 
-collection = get_collection()
+client = get_chroma_client()
 
+print("Testing Chroma connection...")
+print(client.heartbeat())

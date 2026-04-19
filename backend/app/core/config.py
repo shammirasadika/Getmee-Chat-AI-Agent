@@ -13,7 +13,8 @@ def get_config(key: str, default: str = "") -> str:
     return env_vars.get(key, os.getenv(key, default))
 
 class Settings:
-    CHROMA_PATH: str = get_config("CHROMA_PATH", "../ingestion_pipeline/chroma-data")
+    CHROMA_HOST: str = get_config("CHROMA_HOST", "localhost")
+    CHROMA_PORT: int = int(get_config("CHROMA_PORT", "8000"))
     REDIS_URL: str = get_config("REDIS_URL", "redis://localhost:6379/0")
     POSTGRES_URL: str = get_config("POSTGRES_URL", "postgresql://user:password@localhost:5432/getmee")
     LLM_PROVIDER: str = get_config("LLM_PROVIDER", "groq")

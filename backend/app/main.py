@@ -29,7 +29,7 @@ app.include_router(health.router, prefix="/api/health", tags=["health"])
 @app.on_event("startup")
 async def startup_event():
     import os
-    port = os.getenv("PORT", "8001")
+    port = os.getenv("PORT", "8080")
     print(f"\nSwagger docs available at: http://localhost:{port}/docs\n")
 
     # Ensure PostgreSQL tables exist
@@ -45,3 +45,9 @@ async def startup_event():
 @app.get("/")
 def root():
     return {"message": "GetMee Chatbot Backend is running"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "8080"))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=True)
