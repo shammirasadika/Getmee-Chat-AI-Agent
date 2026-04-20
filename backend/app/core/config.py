@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 from dotenv import dotenv_values
 
-SUPPORTED_LLM_PROVIDERS = ["groq"]
 
 # Load .env values directly (bypasses any system env vars)
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
@@ -48,13 +47,6 @@ if not settings.CHROMA_COLLECTION:
         "Add CHROMA_COLLECTION=your_collection_name to your .env file."
     )
 
-# Startup validation
-if settings.LLM_PROVIDER not in SUPPORTED_LLM_PROVIDERS:
-    raise RuntimeError(
-        f"[CONFIG ERROR] LLM_PROVIDER='{settings.LLM_PROVIDER}' is not supported. "
-        f"Supported providers: {SUPPORTED_LLM_PROVIDERS}. "
-        f"Check your .env file for duplicate LLM_PROVIDER entries."
-    )
 if not settings.LLM_API_KEY:
     raise RuntimeError(
         "[CONFIG ERROR] LLM_API_KEY is not set. "
