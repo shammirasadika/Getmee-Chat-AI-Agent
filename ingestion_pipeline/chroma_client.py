@@ -1,11 +1,45 @@
 import os
 import chromadb
 
+from config.config import Config
+
+
+def get_chroma_client():
+    """
+    Create and return a ChromaDB client based on CHROMA_MODE.
+
+    Modes:
+        - "local" → PersistentClient (local folder via CHROMA_PATH)
+        - "http"  → HttpClient (self-hosted server via CHROMA_HOST:CHROMA_PORT)
+        - "cloud" → Chroma Cloud (placeholder, not yet implemented)
+    """
+    mode = Config.CHROMA_MODE.lower()
+
+    if mode == "local":
+        print(f"[ChromaDB] Mode: local | Path: {Config.CHROMA_PATH}")
+        return chromadb.PersistentClient(path=Config.CHROMA_PATH)
+
+    elif mode == "http":
+        print(f"[ChromaDB] Mode: http | Host: {Config.CHROMA_HOST}:{Config.CHROMA_PORT}")
+        return chromadb.HttpClient(
+            host=Config.CHROMA_HOST,
+            port=Config.CHROMA_PORT,
+        )
+
+    elif mode == "cloud":
+        raise NotImplementedError(
+            "[ChromaDB] Cloud mode is not yet implemented. "
+            "Set CHROMA_MODE to 'local' or 'http'."
+        )
+
+    else:
+        raise ValueError(
+            f"[ChromaDB] Invalid CHROMA_MODE='{mode}'. "
+            "Supported modes: local, http, cloud"
+        )
+
+
 def get_collection():
-    client = chromadb.HttpClient(
-        host=os.getenv("CHROMA_HOST", "localhost"),
-        port=int(os.getenv("CHROMA_PORT", "8000"))
-    )
-    return client.get_or_create_collection(
-        name=os.getenv("CHROMA_COLLECTION", "getmee_docs_dev")
-    )
+    client = get_chroma_client()
+    collection_name = os.environ["CHROMA_COLLECTION"]
+    return client.get_or_create_collection(name=collection_name)

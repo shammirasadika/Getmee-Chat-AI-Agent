@@ -27,7 +27,7 @@ session_service = SessionService()
 ticket_service = SupportTicketService()
 
 
-@router.post("/", response_model=SupportSubmitResponse)
+@router.post("", response_model=SupportSubmitResponse)
 async def submit_support_request(request: SupportSubmitRequest):
     """Submit a support request after user provides their email."""
     try:
@@ -180,7 +180,7 @@ async def submit_support_request(request: SupportSubmitRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/")
+@router.get("")
 async def list_support_requests(
     status: str = Query(None, description="Filter by status: pending, resolved, etc."),
     limit: int = Query(50, ge=1, le=200, description="Max results to return"),

@@ -39,9 +39,14 @@ function mount(config: ChatWidgetConfig = {}) {
   document.body.appendChild(container);
 
   const root = createRoot(container);
+  if (!config.apiBase) {
+    throw new Error(
+      "[ChatWidget] apiBase is required. Pass it via window.ChatWidgetConfig, data-api-base attribute, or GetMeeChat.init({ apiBase: ... })"
+    );
+  }
   root.render(
     <ChatBot
-      apiBase={config.apiBase || "http://localhost:8001"}
+      apiBase={config.apiBase}
       logoUrl={config.logoUrl}
     />
   );

@@ -453,7 +453,7 @@ interface ChatBotProps {
   logoUrl?: string;
 }
 
-export default function ChatBot({ apiBase = "http://localhost:8001", logoUrl }: ChatBotProps) {
+export default function ChatBot({ apiBase = "http://localhost:8080", logoUrl }: ChatBotProps) {
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState<Language>("en");
   const [chatStarted, setChatStarted] = useState(false);

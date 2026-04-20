@@ -68,6 +68,10 @@ backend/.env.*
 *.secret
 backend/.env.example
 
+# Ignore production and local env files (never commit secrets)
+.env.production
+.env.local
+
 # ChromaDB
 chroma-data/
 ingestion_pipeline/chroma-data/

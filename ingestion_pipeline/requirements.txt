@@ -1,6 +1,9 @@
 fastapi
 uvicorn
-dotenv
+python-dotenv
 python-docx
 PyPDF2
 python-multipart
+pandas
+sentence-transformers
+chromadb
