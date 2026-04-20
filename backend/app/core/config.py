@@ -28,7 +28,7 @@ class Settings:
     SUPPORT_EMAIL: str = get_config("SUPPORT_EMAIL")
     SUPPORT_EMAIL_COOLDOWN: int = int(get_config("SUPPORT_EMAIL_COOLDOWN", "300"))
     ALLOWED_ORIGINS: list = [o.strip() for o in get_config("ALLOWED_ORIGINS", "").split(",") if o.strip()]
-    PORT: int = int(get_config("PORT"))
+    PORT: int = int(get_config("PORT"))  # Hint: for direct env use, do: port = int(os.getenv("PORT", 8080))
 
     # Email settings
     MAIL_USERNAME: str = get_config("MAIL_USERNAME")
