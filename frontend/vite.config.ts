@@ -11,8 +11,8 @@ const printUrls = () => ({
       const port = typeof addr === "object" ? addr.port : 8080;
       setTimeout(() => {
         console.log(`\n  \x1b[36m✔ GetMee Chat UI:\x1b[0m  http://localhost:${port}/`);
-        console.log(`  \x1b[36m✔ Backend API:\x1b[0m    http://localhost:8001/`);
-        console.log(`  \x1b[36m✔ Swagger Docs:\x1b[0m   http://localhost:8001/docs\n`);
+        console.log(`  \x1b[36m✔ Backend API:\x1b[0m    http://localhost:8080/`);
+        console.log(`  \x1b[36m✔ Swagger Docs:\x1b[0m   http://localhost:8080/docs\n`);
       }, 100);
     });
   },
@@ -21,13 +21,23 @@ const printUrls = () => ({
 export default defineConfig(() => ({
   server: {
     host: "::",
-    port: 8080,
+    port: 5173,
     hmr: {
       overlay: false,
     },
     proxy: {
       "/api": {
-        target: "http://localhost:8001",
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
+    },
+  },
+  preview: {
+    host: "0.0.0.0",
+    port: 3000,
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_TARGET || "http://localhost:8080",
         changeOrigin: true,
       },
     },

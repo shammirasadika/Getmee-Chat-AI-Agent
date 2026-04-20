@@ -1,15 +1,13 @@
-import os
-from dotenv import load_dotenv
+from app.core.config import settings
 
-load_dotenv()
 
 class EmailSettings:
-    MAIL_USERNAME: str = os.getenv("MAIL_USERNAME", "")
-    MAIL_PASSWORD: str = os.getenv("MAIL_PASSWORD", "")
-    MAIL_FROM: str = os.getenv("MAIL_FROM", "")
-    MAIL_PORT: int = int(os.getenv("MAIL_PORT", 587))
-    MAIL_SERVER: str = os.getenv("MAIL_SERVER", "smtp.gmail.com")
-    MAIL_STARTTLS: bool = os.getenv("MAIL_STARTTLS", os.getenv("MAIL_TLS", "True")) == "True"
-    MAIL_SSL_TLS: bool = os.getenv("MAIL_SSL_TLS", os.getenv("MAIL_SSL", "False")) == "True"
+    MAIL_USERNAME: str = settings.MAIL_USERNAME
+    MAIL_PASSWORD: str = settings.MAIL_PASSWORD
+    MAIL_FROM: str = settings.MAIL_FROM
+    MAIL_PORT: int = settings.MAIL_PORT
+    MAIL_SERVER: str = settings.MAIL_SERVER
+    MAIL_STARTTLS: bool = settings.MAIL_STARTTLS
+    MAIL_SSL_TLS: bool = settings.MAIL_SSL_TLS
 
 email_settings = EmailSettings()

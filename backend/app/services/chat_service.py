@@ -48,6 +48,9 @@ import uuid
 
 
 class ChatService:
+    async def handle_chat(self, request: ChatRequest) -> ChatResponse:
+        print(f"[DEBUG] handle_chat called with message: {request.message}", flush=True)
+
     @staticmethod
     def extract_topic_terms(text: str) -> list:
         stopwords = {
@@ -57,7 +60,7 @@ class ChatService:
             "question", "answer", "response", "help", "support", "information"
         }
         terms = []
-        for word in re.findall(r"\b[\w\-']+\b", text.lower()):
+        for word in re.findall(r"\b[\w\-']+\b", text.lower()):  # Extract words from text
             if word not in stopwords and len(word) > 2:
                 terms.append(word)
         return terms
@@ -607,6 +610,14 @@ class ChatService:
         context_chunks = retrieved.get('documents', [])
         flat_chunks = [doc for chunk in context_chunks for doc in chunk]
         raw_count = len(flat_chunks)
+
+        # Debug: Print all raw chunks retrieved from ChromaDB (even if empty)
+        print(f"[DEBUG] [{label}] Retrieved {len(flat_chunks)} raw chunks from ChromaDB:", flush=True)
+        if not flat_chunks:
+            print(f"[DEBUG] [{label}] No chunks returned from ChromaDB for this query.", flush=True)
+        else:
+            for idx, chunk in enumerate(flat_chunks):
+                print(f"[DEBUG] Chunk {idx+1}: {repr(chunk)[:200]}", flush=True)
 
         # Step 1: Clean
         cleaned = [clean_context_chunk(doc[:300]) for doc in flat_chunks[:5]]

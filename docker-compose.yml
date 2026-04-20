@@ -16,6 +16,7 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - CHROMA_MODE=http
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
       - PORT=8080
@@ -30,6 +31,7 @@ services:
     ports:
       - "8001:8001"
     environment:
+      - CHROMA_MODE=http
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
       - INGESTION_PORT=8001
@@ -38,6 +40,15 @@ services:
     depends_on:
       - chroma
     restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_TARGET=http://backend:8080
+    depends_on:
+      - backend
 
 volumes:
   chroma-data:

@@ -11,7 +11,7 @@ import { Send, Mail, Loader2, Globe, RotateCcw, MessageCircle, Sparkles, SmilePl
 import ReactMarkdown from "react-markdown";
 import logo from "@/assets/getmee-logo.svg.png";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "";
+const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
 type Language = "en" | "es";
 
