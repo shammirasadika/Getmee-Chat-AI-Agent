@@ -9,9 +9,9 @@ def get_chroma_client():
     Create and return a ChromaDB client based on CHROMA_MODE.
 
     Modes:
-        - "local" → PersistentClient (local folder via CHROMA_PATH)
-        - "http"  → HttpClient (self-hosted server via CHROMA_HOST:CHROMA_PORT)
-        - "cloud" → HttpClient (Chroma Cloud via CHROMA_URL and CHROMA_API_KEY)
+        - "local" → PersistentClient
+        - "http"  → HttpClient
+        - "cloud" → CloudClient
     """
     mode = settings.CHROMA_MODE.lower()
 

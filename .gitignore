@@ -1,0 +1,32 @@
+# Ignore environment files
+.env
+.env.*
+*.env
+*.env.*
+
+# Ignore Chroma local database files
+chroma_db/
+chroma/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# VSCode settings
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Ignore logs
+*.log
+
+# Ignore Python virtual environments
+venv/
+.env/
+
+# Ignore dist and build folders
+dist/
+build/
