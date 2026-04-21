@@ -1,0 +1,31 @@
+# Ignore environment files
+.env
+.env.*
+backend/.env
+backend/.env.*
+ingestion_pipeline/.env
+ingestion_pipeline/.env.*
+ingestion_pipeline/.env.production
+backend/.env.production
+
+# Ignore Chroma database files and folders
+chroma_db/
+chroma/
+chroma/chroma.sqlite3
+
+# Ignore Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.envrc
+
+# Ignore node_modules and frontend build outputs
+node_modules/
+frontend/dist/
+frontend/dist-widget/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
