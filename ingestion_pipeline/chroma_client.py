@@ -27,9 +27,11 @@ def get_chroma_client():
         )
 
     elif mode == "cloud":
-        raise NotImplementedError(
-            "[ChromaDB] Cloud mode is not yet implemented. "
-            "Set CHROMA_MODE to 'local' or 'http'."
+        print("[ChromaDB] Mode: cloud")
+        return chromadb.CloudClient(
+            api_key=Config.CHROMA_API_KEY,
+            tenant=Config.CHROMA_TENANT,
+            database=Config.CHROMA_DATABASE,
         )
 
     else:

@@ -4,6 +4,8 @@ from dotenv import dotenv_values
 
 
 # Load .env values directly (bypasses any system env vars)
+# To use production settings, use '.env.production' below. For development, switch to '.env'.
+#env_path = Path(__file__).resolve().parent.parent.parent / ".env.production"
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 env_vars = dotenv_values(env_path)
 
@@ -17,6 +19,10 @@ class Settings:
     CHROMA_HOST: str = get_config("CHROMA_HOST")
     CHROMA_PORT: int = int(get_config("CHROMA_PORT"))
     CHROMA_PATH: str = get_config("CHROMA_PATH")
+    CHROMA_URL: str = get_config("CHROMA_URL")
+    CHROMA_API_KEY: str = get_config("CHROMA_API_KEY")
+    CHROMA_TENANT: str = get_config("CHROMA_TENANT")
+    CHROMA_DATABASE: str = get_config("CHROMA_DATABASE")
     CHROMA_COLLECTION: str = get_config("CHROMA_COLLECTION")  
     REDIS_URL: str = get_config("REDIS_URL")
     POSTGRES_URL: str = get_config("POSTGRES_URL")

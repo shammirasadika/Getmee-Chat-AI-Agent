@@ -1,7 +1,15 @@
 print("[DEBUG] Backend main.py loaded and running!", flush=True)
+
+# Ensure .env is loaded for environment variables
+from dotenv import load_dotenv
+load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import chat, feedback, health, support
+
+
+
+import os
 from app.core.config import settings
 
 app = FastAPI(
@@ -14,9 +22,16 @@ app = FastAPI(
 )
 
 # CORS configuration — reads from ALLOWED_ORIGINS env var
+
+# Strict ENV-driven CORS configuration
+origins_env = os.getenv("CORS_ALLOWED_ORIGINS")
+if not origins_env:
+    raise ValueError("CORS_ALLOWED_ORIGINS is not set in environment variables")
+origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]
+print(f"[CORS] Allowed origins: {origins}")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
