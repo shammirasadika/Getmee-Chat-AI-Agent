@@ -11,7 +11,7 @@ def get_chroma_client():
     Modes:
         - "local" → PersistentClient (local folder via CHROMA_PATH)
         - "http"  → HttpClient (self-hosted server via CHROMA_HOST:CHROMA_PORT)
-        - "cloud" → Chroma Cloud (placeholder, not yet implemented)
+        - "cloud" → HttpClient (Chroma Cloud via CHROMA_URL and CHROMA_API_KEY)
     """
     mode = settings.CHROMA_MODE.lower()
 
@@ -26,10 +26,13 @@ def get_chroma_client():
             port=settings.CHROMA_PORT,
         )
 
+
     elif mode == "cloud":
-        raise NotImplementedError(
-            "[ChromaDB] Cloud mode is not yet implemented. "
-            "Set CHROMA_MODE to 'local' or 'http'."
+        print("[ChromaDB] Mode: cloud")
+        return chromadb.CloudClient(
+            api_key=settings.CHROMA_API_KEY,
+            tenant=settings.CHROMA_TENANT,
+            database=settings.CHROMA_DATABASE,
         )
 
     else:
