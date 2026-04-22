@@ -1,3 +1,33 @@
+# English and Spanish greeting/intent sets (additive, do not remove existing)
+GREETINGS = set([
+    "hi", "hello", "hey", "good morning", "good afternoon", "good evening",
+    "hola", "hola!", "hola 👋", "buenas", "buenos días", "buenas tardes", "buenas noches", "qué tal", "qué tal?",
+    "whats up?", "what's up?", "¿qué pasa?"
+])
+
+HOW_ARE_YOU = set([
+    "how are you", "how are you?", "how are you doing", "how are you doing?", "how was your day", "how was your day?", "how is your day", "how is your day?",
+    "how was today", "how was today?", "how is today", "how is today?", "how's it going", "how's it going?", "what's going on", "what's going on?", "what is going on", "what is going on?", "what's up", "what's up?",
+    "cómo estás", "cómo estás?", "cómo te va", "cómo te va?", "cómo ha sido tu día", "cómo ha sido tu día?", "cómo fue tu día", "cómo fue tu día?", "qué pasa", "qué pasa?", "¿qué pasa?"
+])
+
+THANKS = set([
+    "thanks", "thank you", "thx", "ok thanks", "thanks a lot", "thank u", "tysm", "appreciate it",
+    "gracias", "gracias!", "muchas gracias", "mil gracias", "te lo agradezco"
+])
+
+GOODBYE = set([
+    "bye", "goodbye", "see you", "talk later", "see ya", "later", "take care",
+    "adios", "adiós", "hasta luego", "hasta pronto", "nos vemos", "chao"
+])
+
+YES_WORDS = set(["yes", "yeah", "yep", "sure", "ok", "okay", "vale", "sí", "si", "claro", "seguro", "de acuerdo"])
+NO_WORDS = set(["no", "nope", "nah", "nop", "no gracias"])
+
+SUPPORT_REQUESTS = set([
+    "i need human support", "i want human support", "connect me to support", "talk to human", "contact support", "i need help",
+    "necesito soporte humano", "quiero soporte humano", "conectar con soporte", "hablar con un humano", "contactar soporte", "necesito ayuda"
+])
 STATIC_RESPONSES = {
     'en': {
         'bot_name': "My name is {bot_name}.",
@@ -64,7 +94,17 @@ import uuid
 
 
 
+
 class ChatService:
+    @staticmethod
+    def contains_any_set_word(message: str, word_set: set) -> bool:
+        """
+        Returns True if any word or phrase in word_set is present in the message (case-insensitive, substring match).
+        Handles cases like 'hello good morning' or 'hola buenos días'.
+        """
+        msg = message.lower()
+        return any(phrase in msg for phrase in word_set)
+
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
         print(f"[DEBUG] handle_chat called with message: {request.message}", flush=True)
 
@@ -104,11 +144,16 @@ class ChatService:
         return len(matches) >= 2
     # Language-agnostic intent patterns
     INTENT_PATTERNS = {
+        "how_are_you": [
+             "how are you", "how are you?", "how are you doing", "how are you doing?", "how was your day", "how was your day?", "how is your day", "how is your day?",
+             "how was today", "how was today?", "how is today", "how is today?", "how's it going", "how's it going?", "what's going on", "what's going on?", "what is going on", "what is going on?", "what's up", "what's up?",
+             "cómo estás", "cómo estás?", "cómo te va", "cómo te va?", "cómo ha sido tu día", "cómo ha sido tu día?", "cómo fue tu día", "cómo fue tu día?", "qué pasa", "qué pasa?", "¿qué pasa?"
+        ],
         "greeting": [
             # English
-            "hi", "hello", "hey", "hey there", "hello there", "hi there", "yo",
+            "hi", "hello", "hey", "hey there", "hello there", "hi there", "yo", "whats up?", "what's up?",
             # Spanish
-            "hola", "hola 👋", "hola!", "qué tal", "qué tal?", "buenas"
+            "hola", "hola 👋", "hola!", "qué tal", "qué tal?", "buenas", "¿qué pasa?"
         ],
         "buenos_dias": ["good morning", "buenos días"],
         "buenas_tardes": ["good afternoon", "buenas tardes"],
@@ -148,7 +193,8 @@ class ChatService:
             "thanks": "You’re welcome! Let me know if you need anything else.",
             "acknowledgement": "Alright. Let me know if you need help with anything else.",
             "goodbye": "Goodbye! Feel free to come back anytime.",
-            "low_intent": "Let me know if you need help with anything."
+            "low_intent": "Let me know if you need help with anything.",
+            "how_are_you": "I'm just a bot, but I'm here to help! How can I assist you today?"
         },
         "es": {
             "greeting": "¡Hola! ¿En qué puedo ayudarte hoy?",
@@ -158,15 +204,23 @@ class ChatService:
             "thanks": "¡De nada! Avísame si necesitas algo más.",
             "acknowledgement": "De acuerdo. Avísame si necesitas ayuda con algo más.",
             "goodbye": "¡Adiós! No dudes en volver cuando quieras.",
-            "low_intent": "Avísame si necesitas ayuda con algo."
+            "low_intent": "Avísame si necesitas ayuda con algo.",
+            "how_are_you": "¡Estoy bien, gracias! Soy un bot, pero estoy aquí para ayudarte. ¿En qué puedo ayudarte hoy?"
         }
     }
 
+    def _normalize_text(self, text: str) -> str:
+        # Lowercase, remove punctuation, and strip spaces
+        import string
+        return text.lower().translate(str.maketrans('', '', string.punctuation)).strip()
+
     def _detect_intent(self, message: str) -> str | None:
-        msg = message.strip().lower()
+        msg_norm = self._normalize_text(message)
         for intent, phrases in self.INTENT_PATTERNS.items():
-            if msg in phrases:
-                return intent
+            for phrase in phrases:
+                phrase_norm = self._normalize_text(phrase)
+                if phrase_norm and phrase_norm in msg_norm:
+                    return intent
         return None
 
     def _detect_low_intent_pattern(self, message: str) -> str | None:
