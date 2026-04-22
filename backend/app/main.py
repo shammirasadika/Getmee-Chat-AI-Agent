@@ -15,10 +15,9 @@ from app.core.config import settings
 app = FastAPI(
     title="GetMee Chatbot Backend",
     version="0.1.0",
-    docs_url="/docs",         # Swagger UI
-    redoc_url="/redoc",       # ReDoc UI
-    openapi_url="/openapi.json",
-    redirect_slashes=False
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
 # CORS configuration — reads from ALLOWED_ORIGINS env var
