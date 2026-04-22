@@ -1,3 +1,32 @@
+# English and Spanish greeting/intent sets (additive, do not remove existing)
+GREETINGS = set([
+    "hi", "hello", "hey", "good morning", "good afternoon", "good evening",
+    "hola", "hola!", "hola 👋", "buenas", "buenos días", "buenas tardes", "buenas noches", "qué tal", "qué tal?",
+    "whats up?", "what's up?", "¿qué pasa?"
+])
+
+HOW_ARE_YOU = set([
+    "how are you", "how are you doing", "how was your day", "how is your day",
+    "cómo estás", "cómo te va", "cómo ha sido tu día", "cómo fue tu día"
+])
+
+THANKS = set([
+    "thanks", "thank you", "thx", "ok thanks", "thanks a lot", "thank u", "tysm", "appreciate it",
+    "gracias", "gracias!", "muchas gracias", "mil gracias", "te lo agradezco"
+])
+
+GOODBYE = set([
+    "bye", "goodbye", "see you", "talk later", "see ya", "later", "take care",
+    "adios", "adiós", "hasta luego", "hasta pronto", "nos vemos", "chao"
+])
+
+YES_WORDS = set(["yes", "yeah", "yep", "sure", "ok", "okay", "vale", "sí", "si", "claro", "seguro", "de acuerdo"])
+NO_WORDS = set(["no", "nope", "nah", "nop", "no gracias"])
+
+SUPPORT_REQUESTS = set([
+    "i need human support", "i want human support", "connect me to support", "talk to human", "contact support", "i need help",
+    "necesito soporte humano", "quiero soporte humano", "conectar con soporte", "hablar con un humano", "contactar soporte", "necesito ayuda"
+])
 STATIC_RESPONSES = {
     'en': {
         'bot_name': "My name is {bot_name}.",
@@ -47,7 +76,17 @@ import uuid
 
 
 
+
 class ChatService:
+    @staticmethod
+    def contains_any_set_word(message: str, word_set: set) -> bool:
+        """
+        Returns True if any word or phrase in word_set is present in the message (case-insensitive, substring match).
+        Handles cases like 'hello good morning' or 'hola buenos días'.
+        """
+        msg = message.lower()
+        return any(phrase in msg for phrase in word_set)
+
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
         print(f"[DEBUG] handle_chat called with message: {request.message}", flush=True)
 
@@ -89,9 +128,9 @@ class ChatService:
     INTENT_PATTERNS = {
         "greeting": [
             # English
-            "hi", "hello", "hey", "hey there", "hello there", "hi there", "yo",
+            "hi", "hello", "hey", "hey there", "hello there", "hi there", "yo", "whats up?", "what's up?",
             # Spanish
-            "hola", "hola 👋", "hola!", "qué tal", "qué tal?", "buenas"
+            "hola", "hola 👋", "hola!", "qué tal", "qué tal?", "buenas", "¿qué pasa?"
         ],
         "buenos_dias": ["good morning", "buenos días"],
         "buenas_tardes": ["good afternoon", "buenas tardes"],
