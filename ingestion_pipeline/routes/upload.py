@@ -10,22 +10,28 @@ logger = get_logger()
 
 def embed_and_store_in_chromadb(chunks, metadata):
     from chroma_client import get_collection
-    from services.embedding import generate_embedding
+    from services.embedding import generate_embeddings_in_batches
     collection = get_collection()
     ids = [f"{metadata.get('filename', 'doc')}_chunk_{i+1}" for i in range(len(chunks))]
-    embeddings = [generate_embedding(chunk) for chunk in chunks]
     metadatas = [{
         "document_id": metadata.get("document_id", "doc1"),
         "file_name": metadata.get("filename", "unknown"),
         "chunk_index": i+1
     } for i in range(len(chunks))]
+    logger.info(f"Generating embeddings for {len(chunks)} chunks in batches...")
+    embeddings = generate_embeddings_in_batches(chunks, batch_size=4)
+    logger.info(f"Embeddings generated for {len(embeddings)} chunks. Starting ChromaDB upsert...")
+    # Optional: upsert to ChromaDB in batches to further reduce memory usage
+    batch_size = 4
     try:
-        collection.upsert(
-            ids=ids,
-            documents=chunks,
-            embeddings=embeddings,
-            metadatas=metadatas
-        )
+        for i in range(0, len(chunks), batch_size):
+            collection.upsert(
+                ids=ids[i:i+batch_size],
+                documents=chunks[i:i+batch_size],
+                embeddings=embeddings[i:i+batch_size],
+                metadatas=metadatas[i:i+batch_size]
+            )
+            logger.info(f"Upserted batch {i//batch_size+1} to ChromaDB")
         logger.info(f"Stored {len(chunks)} chunks in ChromaDB with metadata: {metadata}")
         return True
     except Exception as e:
