@@ -202,7 +202,7 @@ class ChatService:
         for intent, phrases in self.INTENT_PATTERNS.items():
             for phrase in phrases:
                 phrase_norm = self._normalize_text(phrase)
-                if phrase_norm and phrase_norm in msg_norm:
+                if phrase_norm and phrase_norm == msg_norm:
                     return intent
         return None
 
