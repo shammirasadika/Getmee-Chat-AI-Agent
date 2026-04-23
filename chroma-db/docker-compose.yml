@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    ports:
+      - "8000:8000"  # Expose ChromaDB HTTP API on port 8000
+    volumes:
+      - chroma_data:/chroma/.chroma/index  # Persistent storage for ChromaDB data
+    restart: unless-stopped  # Restart automatically unless stopped manually
+
+# Named volume for persistent ChromaDB storage
+tvolumes:
+  chroma_data:
+    # Docker manages this volume; data persists across container restarts
