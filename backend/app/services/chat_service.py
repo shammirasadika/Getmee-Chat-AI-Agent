@@ -77,6 +77,23 @@ import uuid
 
 
 class ChatService:
+
+    def _detect_intents(self, message: str) -> set[str]:
+        msg_norm = self._normalize_text(message)
+        detected = set()
+        for intent, phrases in self.INTENT_PATTERNS.items():
+            for phrase in phrases:
+                phrase_norm = self._normalize_text(phrase)
+                if not phrase_norm:
+                    continue
+                # whole phrase / whole word match only
+                pattern = r'(^|\s)' + re.escape(phrase_norm) + r'(\s|$)'
+                if re.search(pattern, msg_norm):
+                    detected.add(intent)
+        low_intent_pattern = self._detect_low_intent_pattern(message)
+        if low_intent_pattern:
+            detected.add(low_intent_pattern)
+        return detected
     @staticmethod
     def contains_any_set_word(message: str, word_set: set) -> bool:
         """
@@ -130,7 +147,7 @@ class ChatService:
         ],
         "greeting": [
             # English
-            "hi", "hello", "hey", "hey there", "hello there", "hi there", "yo", "whats up?", "what's up?",
+            "hi", "hello", "hellow", "hey", "hey there", "hello there", "hi there", "yo", "whats up?", "what's up?",
             # Spanish
             "hola", "hola 👋", "hola!", "qué tal", "qué tal?", "buenas", "¿qué pasa?"
         ],
@@ -1075,30 +1092,65 @@ class ChatService:
                 escalation_source="Support intent",
             )
 
-        # 3. Small talk and low intent detection (language-agnostic input, language-specific output)
-        lang = request.language or 'en'
-        intent = self._detect_intent(request.message)
-        if not intent:
-            intent = self._detect_low_intent_pattern(request.message)
-        if intent:
-            answer = self.INTENT_RESPONSES.get(lang, self.INTENT_RESPONSES["en"]).get(intent)
-            await self.message_service.redis_session.push_message(
-                session_key, {"role": "user", "text": request.message, "language": lang}
-            )
-            await self.message_service.redis_session.push_message(
-                session_key, {"role": "bot", "text": answer, "language": lang}
-            )
-            return ChatResponse(
-                answer=answer,
-                language=lang,
-                sources=[],
-                fallback_used=False,
-                requires_email=False,
-                retrieval_language=lang,
-                message_id=None,
-                session_uuid=str(session_uuid),
-                show_feedback=False,
-            )
+        # 3. Small talk and low intent detection (multi-intent, safe)
+        lang = request.language or "en"
+        detected_intents = self._detect_intents(request.message)
+
+        casual_intents = {
+            "greeting",
+            "how_are_you",
+            "buenos_dias",
+            "buenas_tardes",
+            "buenas_noches",
+            "thanks",
+            "acknowledgement",
+            "goodbye",
+            "low_intent",
+        }
+
+        has_casual = bool(detected_intents & casual_intents)
+
+        if has_casual:
+            responses = []
+            intent_resp = self.INTENT_RESPONSES.get(lang, self.INTENT_RESPONSES["en"])
+
+            priority_order = [
+                "buenos_dias",
+                "buenas_tardes",
+                "buenas_noches",
+                "greeting",
+                "how_are_you",
+                "thanks",
+                "acknowledgement",
+                "goodbye",
+                "low_intent",
+            ]
+
+            for intent_name in priority_order:
+                if intent_name in detected_intents:
+                    response_text = intent_resp.get(intent_name)
+                    if response_text and response_text not in responses:
+                        responses.append(response_text)
+
+            if responses:
+                answer = " ".join(responses)
+                await self.message_service.redis_session.push_message(
+                    session_key, {"role": "user", "text": request.message, "language": lang}
+                )
+                await self.message_service.redis_session.push_message(
+                    session_key, {"role": "bot", "text": answer, "language": lang}
+                )
+                return ChatResponse(
+                    answer=answer,
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
 
         # 5. Follow-up message handling (new logic)
         follow_up_answer = await self._handle_follow_up_message(request.message, session_key, self.selected_language)
@@ -1449,12 +1501,10 @@ class ChatService:
         bot_count = context.get("bot_message_count", 0)
         overall_count = context.get("bot_response_count", 0)
         # Determine if the answer is meaningful (not fallback, not support, not intent-based small talk/low intent)
-        intent = self._detect_intent(request.message)
-        if not intent:
-            intent = self._detect_low_intent_pattern(request.message)
+        detected_intents = self._detect_intents(request.message)
         is_meaningful = not (
             fallback_used
-            or intent
+            or bool(detected_intents & casual_intents)
         )
         if is_meaningful:
             bot_count += 1
