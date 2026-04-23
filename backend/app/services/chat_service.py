@@ -76,9 +76,6 @@ import uuid
 
 
 
-
-
-
 class ChatService:
     @staticmethod
     def contains_any_set_word(message: str, word_set: set) -> bool:
@@ -89,8 +86,6 @@ class ChatService:
         msg = message.lower()
         return any(phrase in msg for phrase in word_set)
 
-    async def handle_chat(self, request: ChatRequest) -> ChatResponse:
-        pass  # TODO: Implement chat handling logic
 
     @staticmethod
     def extract_topic_terms(text: str) -> list:
