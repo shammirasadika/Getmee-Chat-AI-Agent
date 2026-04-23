@@ -268,13 +268,62 @@ class ChatService:
             "talk to human",
             "talk to a human",
             "talk to a person",
+            "talk to staff",
+            "talk to a staff member",
+            "talk to a team member",
+            "talk to someone on your team",
+            "talk to someone on staff",
+            "talk to a real person",
+            "talk to customer service",
+            "talk to customer support",
             "speak to an agent",
             "speak to support",
+            "speak to a human",
+            "speak to a staff member",
+            "speak to a team member",
+            "speak to a real person",
             "connect me to support",
+            "connect me to a human",
+            "connect me to staff",
+            "connect me to a staff member",
+            "connect me to a team member",
+            "connect me to customer service",
+            "connect me to customer support",
             "reach support",
+            "reach a human",
+            "reach staff",
+            "reach a staff member",
+            "reach a team member",
             "customer support",
+            "customer service",
             "need human help",
+            "need to talk to a human",
+            "need to talk to staff",
+            "need to talk to a staff member",
+            "need to talk to a team member",
+            "need to talk to customer service",
+            "need to talk to customer support",
             "i need support",
+            "i need human support",
+            "i need to contact support",
+            "i need to contact a human",
+            "i need to contact staff",
+            "i need to contact a staff member",
+            "i need to contact a team member",
+            "i need to contact customer service",
+            "i need to contact customer support",
+            "can i talk to a human",
+            "can i talk to staff",
+            "can i talk to a staff member",
+            "can i talk to a team member",
+            "can i talk to customer service",
+            "can i talk to customer support",
+            "can i speak to a human",
+            "can i speak to staff",
+            "can i speak to a staff member",
+            "can i speak to a team member",
+            "can i speak to customer service",
+            "can i speak to customer support",
             # Spanish
             "cómo contacto soporte",
             "cómo puedo contactar soporte",
@@ -284,14 +333,38 @@ class ChatService:
             "hablar con una persona",
             "hablar con un agente",
             "hablar con soporte",
+            "hablar con un miembro del equipo",
+            "hablar con alguien del equipo",
+            "hablar con alguien del personal",
+            "hablar con atención al cliente",
+            "hablar con servicio al cliente",
             "necesito soporte",
             "necesito ayuda humana",
+            "necesito hablar con alguien",
+            "necesito hablar con un humano",
+            "necesito hablar con el personal",
+            "necesito hablar con un miembro del equipo",
+            "necesito hablar con atención al cliente",
+            "necesito hablar con servicio al cliente",
             "conectar con soporte",
+            "conectar con un humano",
+            "conectar con el personal",
+            "conectar con un miembro del equipo",
+            "conectar con atención al cliente",
+            "conectar con servicio al cliente",
             "atención al cliente",
+            "servicio al cliente",
             "quiero hablar con alguien",
             "quiero hablar con una persona",
+            "quiero hablar con un humano",
+            "quiero hablar con el personal",
+            "quiero hablar con un miembro del equipo",
             "quiero contactar soporte",
+            "quiero contactar atención al cliente",
+            "quiero contactar servicio al cliente",
             "cómo hablo con soporte",
+            "cómo hablo con atención al cliente",
+            "cómo hablo con servicio al cliente",
             "necesito hablar con alguien",
         ]
         if any(phrase in text for phrase in support_phrases):
@@ -768,9 +841,40 @@ class ChatService:
         print(f"[Chat] Incoming request.language: {request.language}", flush=True)
 
         # 0. Ensure session exists in PG + Redis
+
         session_key = request.session_id  # frontend sends this as session_key
         session = await self.session_service.get_or_create_session(session_key, request.language)
         session_uuid = session["id"]  # PG UUID
+
+        # EARLY: Direct support intent triggers support popup immediately
+        if self._is_support_intent(request.message):
+            support_context = await self._get_support_context(session_key)
+            if self._is_support_limit_reached(support_context):
+                return ChatResponse(
+                    answer=self._get_direct_support_limit_message(request.language or "en"),
+                    language=request.language or "en",
+                    retrieval_language=request.language or "en",
+                    session_uuid=session_uuid,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    show_support_options=False,
+                    support_comment_enabled=False,
+                    message_id=None
+                )
+            await self._prepare_new_support_submission(session_key)
+            return ChatResponse(
+                answer=self._get_unsatisfied_support_prompt(request.language or "en"),
+                language=request.language or "en",
+                retrieval_language=request.language or "en",
+                session_uuid=session_uuid,
+                sources=[],
+                fallback_used=False,
+                requires_email=True,
+                show_support_options=True,
+                support_comment_enabled=True,
+                message_id=None
+            )
 
         # --- LANGUAGE CHANGE TRACKING (per session) ---
         # Get session context from Redis
