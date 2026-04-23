@@ -16,11 +16,11 @@ def get_chroma_client():
     mode = settings.CHROMA_MODE.lower()
 
     if mode == "local":
-        print(f"[ChromaDB] Mode: local | Path: {settings.CHROMA_PATH}")
+        # ...existing code...
         return chromadb.PersistentClient(path=settings.CHROMA_PATH)
 
     elif mode == "http":
-        print(f"[ChromaDB] Mode: http | Host: {settings.CHROMA_HOST}:{settings.CHROMA_PORT}")
+        # ...existing code...
         return chromadb.HttpClient(
             host=settings.CHROMA_HOST,
             port=settings.CHROMA_PORT,
@@ -28,7 +28,7 @@ def get_chroma_client():
 
 
     elif mode == "cloud":
-        print("[ChromaDB] Mode: cloud")
+        # ...existing code...
         return chromadb.CloudClient(
             api_key=settings.CHROMA_API_KEY,
             tenant=settings.CHROMA_TENANT,
@@ -61,5 +61,5 @@ class ChromaClient:
                 "distances": distances
             }
         except Exception as e:
-            print(f"[DEBUG] Exception in ChromaClient.query: {e}", flush=True)
+            # ...existing code...
             return {"documents": [], "ids": [], "metadatas": [], "embeddings": [], "distances": []}

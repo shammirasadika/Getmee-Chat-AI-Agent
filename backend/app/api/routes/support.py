@@ -164,7 +164,7 @@ async def submit_support_request(request: SupportSubmitRequest):
         return SupportSubmitResponse(
             success=True,
             message=message,
-            request_id=result.get("request_id"),
+            request_id=str(result.get("request_id")) if result.get("request_id") is not None else None,
         )
     except Exception as e:
         print("[Support API] Exception in submit_support_request:")

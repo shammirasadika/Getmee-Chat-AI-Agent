@@ -23,8 +23,9 @@ class SessionService:
         await self.db.update_session_email(session_id, email)
 
     def __init__(self):
+        from app.clients.db_factory import get_db_client
         self.redis = RedisClient(settings.REDIS_URL)
-        self.db = PostgresClient(settings.POSTGRES_URL)
+        self.db = get_db_client()
         self.redis_session = RedisSessionService(settings.REDIS_URL)
 
     # ──────────────────────────────────────────────

@@ -1,4 +1,4 @@
-print("[DEBUG] Backend main.py loaded and running!", flush=True)
+ # ...existing code...
 
 # Ensure .env is loaded for environment variables
 from dotenv import load_dotenv
@@ -27,7 +27,7 @@ origins_env = os.getenv("CORS_ALLOWED_ORIGINS")
 if not origins_env:
     raise ValueError("CORS_ALLOWED_ORIGINS is not set in environment variables")
 origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]
-print(f"[CORS] Allowed origins: {origins}")
+ # ...existing code...
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -47,18 +47,17 @@ app.include_router(health.router, prefix="/api/health", tags=["health"])
 async def startup_event():
     import logging
     logger = logging.getLogger("startup")
-    logger.info(f"Swagger docs available at: http://0.0.0.0:{settings.PORT}/docs")
-    logger.info(f"CORS allowed origins: {settings.ALLOWED_ORIGINS}")
-    logger.info(f"ChromaDB mode: {settings.CHROMA_MODE}")
+    # ...existing code...
 
     # Ensure PostgreSQL tables exist
     from app.clients.postgres_client import PostgresClient
     try:
         pg = PostgresClient(settings.POSTGRES_URL)
         await pg.ensure_tables()
-        logger.info("PostgreSQL tables ensured")
+        # ...existing code...
     except Exception as e:
-        logger.warning(f"PostgreSQL table setup failed (non-blocking): {e}")
+        pass
+        # ...existing code...
 
 @app.get("/")
 def root():

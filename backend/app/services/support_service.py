@@ -8,7 +8,8 @@ COOLDOWN_KEY_PREFIX = "support_email_sent:"
 
 class SupportService:
     def __init__(self):
-        self.postgres = PostgresClient(settings.POSTGRES_URL)
+        from app.clients.db_factory import get_db_client
+        self.postgres = get_db_client()
         self.redis = RedisClient(settings.REDIS_URL)
         self._email_client = None
 

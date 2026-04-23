@@ -78,6 +78,7 @@ import uuid
 
 
 
+
 class ChatService:
     @staticmethod
     def contains_any_set_word(message: str, word_set: set) -> bool:
@@ -89,7 +90,7 @@ class ChatService:
         return any(phrase in msg for phrase in word_set)
 
     async def handle_chat(self, request: ChatRequest) -> ChatResponse:
-        print(f"[DEBUG] handle_chat called with message: {request.message}", flush=True)
+        pass  # TODO: Implement chat handling logic
 
     @staticmethod
     def extract_topic_terms(text: str) -> list:
@@ -121,7 +122,7 @@ class ChatService:
         # Also normalize hyphens in match text
         match_text_nohyphen = match_text.replace("-", " ")
         matches = [t for t in normalized_terms if t in match_text_nohyphen]
-        print(f"[DEBUG] topic_filter: terms={normalized_terms}, matches={matches}, match_text='{match_text_nohyphen[:100]}'", flush=True)
+        # ...existing code...
         if len(normalized_terms) <= 3:
             return len(matches) >= 1
         return len(matches) >= 2
@@ -620,7 +621,7 @@ class ChatService:
         # Try to get user_name from Redis context
         if "what is my name" in msg:
             ctx = await self.message_service.redis_session.get_context(session_key)
-            print(f"[DEBUG] Redis context for session_key={session_key}: {ctx}")
+            # ...existing code...
             user_name = ctx.get("user_name") if ctx else None
             lang = target_language or language or 'en'
        

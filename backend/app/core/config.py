@@ -15,6 +15,13 @@ def get_config(key: str, default: str = "") -> str:
 
 
 class Settings:
+    # Database selection
+    PRIMARY_DB: str = get_config("PRIMARY_DB", "postgresql")
+    POSTGRES_URL: str | None = get_config("POSTGRES_URL") or None
+    MONGODB_URI: str | None = get_config("MONGODB_URI") or None
+    MONGODB_DATABASE: str | None = get_config("MONGODB_DATABASE") or None
+
+    # ChromaDB
     CHROMA_MODE: str = get_config("CHROMA_MODE")
     CHROMA_HOST: str = get_config("CHROMA_HOST")
     CHROMA_PORT: int = int(get_config("CHROMA_PORT"))
@@ -23,17 +30,22 @@ class Settings:
     CHROMA_API_KEY: str = get_config("CHROMA_API_KEY")
     CHROMA_TENANT: str = get_config("CHROMA_TENANT")
     CHROMA_DATABASE: str = get_config("CHROMA_DATABASE")
-    CHROMA_COLLECTION: str = get_config("CHROMA_COLLECTION")  
+    CHROMA_COLLECTION: str = get_config("CHROMA_COLLECTION")
+
+    # Redis
     REDIS_URL: str = get_config("REDIS_URL")
-    POSTGRES_URL: str = get_config("POSTGRES_URL")
+
+    # LLM
     LLM_PROVIDER: str = get_config("LLM_PROVIDER")
     LLM_API_KEY: str = get_config("LLM_API_KEY")
+
+    # Logging and app
     LOG_LEVEL: str = get_config("LOG_LEVEL")
     ALLOW_GENERAL_FALLBACK: bool = get_config("ALLOW_GENERAL_FALLBACK", "false").lower() == "true"
     SUPPORT_EMAIL: str = get_config("SUPPORT_EMAIL")
     SUPPORT_EMAIL_COOLDOWN: int = int(get_config("SUPPORT_EMAIL_COOLDOWN", "300"))
     ALLOWED_ORIGINS: list = [o.strip() for o in get_config("ALLOWED_ORIGINS", "").split(",") if o.strip()]
-    PORT: int = int(get_config("PORT"))  # Hint: for direct env use, do: port = int(os.getenv("PORT", 8080))
+    PORT: int = int(get_config("PORT"))
 
     # Email settings
     MAIL_USERNAME: str = get_config("MAIL_USERNAME")
@@ -62,11 +74,6 @@ if not settings.REDIS_URL:
     raise RuntimeError(
         "[CONFIG ERROR] REDIS_URL is not set. "
         "Add REDIS_URL=redis://... to your .env file."
-    )
-if not settings.POSTGRES_URL:
-    raise RuntimeError(
-        "[CONFIG ERROR] POSTGRES_URL is not set. "
-        "Add POSTGRES_URL=postgresql://... to your .env file."
     )
 
 

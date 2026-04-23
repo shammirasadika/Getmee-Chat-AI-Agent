@@ -11,7 +11,8 @@ from app.core.config import settings
 
 class MessageService:
     def __init__(self):
-        self.db = PostgresClient(settings.POSTGRES_URL)
+        from app.clients.db_factory import get_db_client
+        self.db = get_db_client()
         self.redis_session = RedisSessionService(settings.REDIS_URL)
 
     async def save_user_message(self, session_id, session_key: str,
