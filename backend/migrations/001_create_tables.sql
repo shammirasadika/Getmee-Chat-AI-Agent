@@ -1,3 +1,25 @@
+
+# ──────────────────────────────────────────────
+# 4. support_request
+# Purpose: store user requests for human support and email handling status
+# ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS support_request (
+    id               UUID      PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id        UUID      NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    user_message      TEXT      NULL,
+    user_email        VARCHAR   NULL,
+    fallback_message  TEXT      NULL,
+    language          VARCHAR   NULL,
+    status            VARCHAR   NOT NULL DEFAULT 'pending',
+    email_sent        BOOLEAN   NOT NULL DEFAULT FALSE,
+    chat_summary      TEXT      NULL,
+    source            VARCHAR   NULL,
+    created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_support_request_session_id ON support_request(session_id);
+CREATE INDEX IF NOT EXISTS idx_support_request_status ON support_request(status);
+CREATE INDEX IF NOT EXISTS idx_support_request_source ON support_request(source);
 -- ============================================================
 -- GetMee Chat AI Agent — PostgreSQL Schema Migration
 -- Version: 001
