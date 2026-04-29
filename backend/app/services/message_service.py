@@ -11,23 +11,25 @@ from app.core.config import settings
 
 class MessageService:
     def __init__(self):
-        self.db = PostgresClient(settings.POSTGRES_URL)
+        from app.clients.db_factory import get_db_client
+        self.db = get_db_client()
         self.redis_session = RedisSessionService(settings.REDIS_URL)
 
     async def save_user_message(self, session_id, session_key: str,
-                                text: str, language: Optional[str] = None) -> dict:
-        """Persist a user message and push to Redis recent-messages."""
+                                text: str, language: Optional[str] = None, language_changed: bool = False) -> dict:
+        """Persist a user message and push to Redis recent-messages. Accepts language_changed."""
         row = await self.db.insert_message(
             session_id=session_id,
             message_type="user",
             message_text=text,
             language=language,
         )
-        # Push to Redis for context window
+        # Push to Redis for context window, include language_changed
         await self.redis_session.push_message(session_key, {
             "role": "user",
             "text": text,
             "message_id": str(row["id"]),
+            "language_changed": language_changed,
         })
         return row
 

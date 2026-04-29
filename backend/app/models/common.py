@@ -20,4 +20,4 @@ class SupportSubmitRequest(BaseModel):
 class SupportSubmitResponse(BaseModel):
     success: bool
     message: str
-    request_id: Optional[int] = None
+    request_id: Optional[str] = None

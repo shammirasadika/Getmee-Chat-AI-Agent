@@ -15,7 +15,8 @@ from app.core.config import settings
 
 class FeedbackService:
     def __init__(self):
-        self.db = PostgresClient(settings.POSTGRES_URL)
+        from app.clients.db_factory import get_db_client
+        self.db = get_db_client()
         self.redis_session = RedisSessionService(settings.REDIS_URL)
 
     # ──────────────────────────────────────────────
@@ -31,14 +32,12 @@ class FeedbackService:
         - If not_satisfied, sets up support_state for escalation flow
         """
 
-        print(f"[DEBUG] submit_message_feedback called with: session_key={session_key}, session_id={session_id}, message_id={message_id}, feedback={feedback}")
-        # Persist to PostgreSQL
         row = await self.db.insert_message_feedback(
             message_id=message_id,
             session_id=session_id,
             feedback=feedback,
         )
-        print(f"[DEBUG] Feedback inserted into DB: {row}")
+        # ...existing code...
 
         # Update Redis: mark feedback submitted
         await self.redis_session.mark_feedback_submitted(session_key)
@@ -74,6 +73,7 @@ class FeedbackService:
             rating=rating,
             comment=comment,
         )
+        # ...existing code...
         # Clear the pending flag
         await self.redis_session.set_endchat_state(
             session_key, chat_ended=True, session_feedback_pending=False,

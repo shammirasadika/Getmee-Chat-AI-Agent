@@ -1,0 +1,68 @@
+# ChromaDB / vector DB
+chroma/
+*.parquet
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.pyo
+*.pyd
+*.pdb
+*.sqlite3
+
+# Environment
+.env
+.venv/
+venv/
+ENV/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Migrations
+migrations/__pycache__/
+
+# Redis dump
+*.rdb
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Others
+*.bak
+*.swp
+*.tmp
+
+# Binary and compiled Python files
+*.bin
+*.cpython-*.pyc
+
+# Coverage
+htmlcov/
+.coverage
+.tox/
+.coverage.*
+.cache
+.pytest_cache/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+
+# Test
+*.test
+
+# Docker
+*.pid

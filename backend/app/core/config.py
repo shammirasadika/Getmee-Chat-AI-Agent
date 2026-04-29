@@ -2,9 +2,10 @@ import os
 from pathlib import Path
 from dotenv import dotenv_values
 
-SUPPORTED_LLM_PROVIDERS = ["groq"]
 
 # Load .env values directly (bypasses any system env vars)
+# To use production settings, use '.env.production' below. For development, switch to '.env'.
+#env_path = Path(__file__).resolve().parent.parent.parent / ".env.production"
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 env_vars = dotenv_values(env_path)
 
@@ -12,30 +13,67 @@ def get_config(key: str, default: str = "") -> str:
     """Get config value: .env file takes priority, then os.environ, then default."""
     return env_vars.get(key, os.getenv(key, default))
 
+
 class Settings:
-    CHROMA_PATH: str = get_config("CHROMA_PATH", "../ingestion_pipeline/chroma-data")
-    REDIS_URL: str = get_config("REDIS_URL", "redis://localhost:6379/0")
-    POSTGRES_URL: str = get_config("POSTGRES_URL", "postgresql://user:password@localhost:5432/getmee")
-    LLM_PROVIDER: str = get_config("LLM_PROVIDER", "groq")
-    LLM_API_KEY: str = get_config("LLM_API_KEY", get_config("GROQ_API_KEY", ""))
-    LOG_LEVEL: str = get_config("LOG_LEVEL", "INFO")
+    # Database selection
+    PRIMARY_DB: str = get_config("PRIMARY_DB", "postgresql")
+    POSTGRES_URL: str | None = get_config("POSTGRES_URL") or None
+    MONGODB_URI: str | None = get_config("MONGODB_URI") or None
+    MONGODB_DATABASE: str | None = get_config("MONGODB_DATABASE") or None
+
+    # ChromaDB
+    CHROMA_MODE: str = get_config("CHROMA_MODE")
+    CHROMA_HOST: str = get_config("CHROMA_HOST")
+    CHROMA_PORT: int = int(get_config("CHROMA_PORT"))
+    CHROMA_PATH: str = get_config("CHROMA_PATH")
+    CHROMA_URL: str = get_config("CHROMA_URL")
+    CHROMA_API_KEY: str = get_config("CHROMA_API_KEY")
+    CHROMA_TENANT: str = get_config("CHROMA_TENANT")
+    CHROMA_DATABASE: str = get_config("CHROMA_DATABASE")
+    CHROMA_COLLECTION: str = get_config("CHROMA_COLLECTION")
+
+    # Redis
+    REDIS_URL: str = get_config("REDIS_URL")
+
+    # LLM
+    LLM_PROVIDER: str = get_config("LLM_PROVIDER")
+    LLM_API_KEY: str = get_config("LLM_API_KEY")
+
+    # Logging and app
+    LOG_LEVEL: str = get_config("LOG_LEVEL")
     ALLOW_GENERAL_FALLBACK: bool = get_config("ALLOW_GENERAL_FALLBACK", "false").lower() == "true"
-    SUPPORT_EMAIL: str = get_config("SUPPORT_EMAIL", "")
+    SUPPORT_EMAIL: str = get_config("SUPPORT_EMAIL")
     SUPPORT_EMAIL_COOLDOWN: int = int(get_config("SUPPORT_EMAIL_COOLDOWN", "300"))
+    ALLOWED_ORIGINS: list = [o.strip() for o in get_config("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+    PORT: int = int(get_config("PORT"))
+
+    # Email settings
+    MAIL_USERNAME: str = get_config("MAIL_USERNAME")
+    MAIL_PASSWORD: str = get_config("MAIL_PASSWORD")
+    MAIL_FROM: str = get_config("MAIL_FROM")
+    MAIL_PORT: int = int(get_config("MAIL_PORT"))
+    MAIL_SERVER: str = get_config("MAIL_SERVER")
+    MAIL_STARTTLS: bool = get_config("MAIL_STARTTLS", get_config("MAIL_TLS", "True")) == "True"
+    MAIL_SSL_TLS: bool = get_config("MAIL_SSL_TLS", get_config("MAIL_SSL", "False")) == "True"
 
 settings = Settings()
 
-# Startup validation
-if settings.LLM_PROVIDER not in SUPPORTED_LLM_PROVIDERS:
+# Startup validation for required ChromaDB collection
+if not settings.CHROMA_COLLECTION:
     raise RuntimeError(
-        f"[CONFIG ERROR] LLM_PROVIDER='{settings.LLM_PROVIDER}' is not supported. "
-        f"Supported providers: {SUPPORTED_LLM_PROVIDERS}. "
-        f"Check your .env file for duplicate LLM_PROVIDER entries."
-    )
-if not settings.LLM_API_KEY:
-    raise RuntimeError(
-        "[CONFIG ERROR] GROQ_API_KEY / LLM_API_KEY is not set. "
-        "Add GROQ_API_KEY=your_key to your .env file."
+        "[CONFIG ERROR] CHROMA_COLLECTION is not set. "
+        "Add CHROMA_COLLECTION=your_collection_name to your .env file."
     )
 
-print(f"[CONFIG] LLM_PROVIDER={settings.LLM_PROVIDER}, LLM_API_KEY=set", flush=True)
+if not settings.LLM_API_KEY:
+    raise RuntimeError(
+        "[CONFIG ERROR] LLM_API_KEY is not set. "
+        "Add LLM_API_KEY=your_key to your .env file."
+    )
+if not settings.REDIS_URL:
+    raise RuntimeError(
+        "[CONFIG ERROR] REDIS_URL is not set. "
+        "Add REDIS_URL=redis://... to your .env file."
+    )
+
+

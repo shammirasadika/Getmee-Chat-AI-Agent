@@ -11,25 +11,29 @@ from app.core.config import settings
 
 class SupportTicketService:
     def __init__(self):
-        self.db = PostgresClient(settings.POSTGRES_URL)
+        from app.clients.db_factory import get_db_client
+        self.db = get_db_client()
         self.redis_session = RedisSessionService(settings.REDIS_URL)
 
     async def create_ticket(self, session_id, session_key: str,
                             issue_summary: str,
                             message_id=None,
                             user_email: Optional[str] = None) -> dict:
+        # Ensure UUIDs are strings for asyncpg/Postgres compatibility
+        session_id_str = str(session_id) if not isinstance(session_id, str) else session_id
+        message_id_str = str(message_id) if message_id is not None and not isinstance(message_id, str) else message_id
         """
         Create a support ticket in PostgreSQL.
         Optionally mark the chat_session as escalated and clear Redis support_state.
         """
         ticket = await self.db.insert_support_ticket(
-            session_id=session_id,
+            session_id=session_id_str,
             issue_summary=issue_summary,
-            message_id=message_id,
+            message_id=message_id_str,
             user_email=user_email,
         )
         # Mark session as escalated
-        await self.db.update_session_status(session_id, status="escalated")
+        await self.db.update_session_status(session_id_str, status="escalated")
         # Clear Redis escalation flags
         await self.redis_session.clear_support_state(session_key)
         await self.redis_session.update_context(
@@ -37,7 +41,6 @@ class SupportTicketService:
             waiting_for_support_confirmation=False,
             chat_status="escalated",
         )
-        print(f"[SupportTicket] Created ticket {ticket['id']} for session {session_key}", flush=True)
         return ticket
 
     async def handle_try_again(self, session_key: str):

@@ -89,35 +89,37 @@ backend/
    ```
 
 2. **Configure environment variables**
-   Copy `.env.example` to `.env` and set:
-   ```env
-   # Required
-   GROQ_API_KEY=your_groq_api_key
-   LLM_PROVIDER=groq
+  Copy `.env.example` to `.env` and set:
+  ```env
+  # Required
+  LLM_PROVIDER=groq  # or claude, etc.
+  LLM_API_KEY=your_llm_api_key
 
-   # PostgreSQL (Neon or local)
-   POSTGRES_URL=postgresql://user:password@localhost:5432/getmee
+  # PostgreSQL (Neon or local)
+  POSTGRES_URL=postgresql://user:password@localhost:5432/getmee
 
-   # Redis (Upstash or local)
-   REDIS_URL=redis://localhost:6379/0
+  # Redis (Upstash or local)
+  REDIS_URL=redis://localhost:6379/0
 
-   # ChromaDB
-   CHROMA_HOST=localhost
-   CHROMA_PORT=8000
-   CHROMA_COLLECTION=getmee_docs_dev
+  # ChromaDB
+  CHROMA_HOST=localhost
+  CHROMA_PORT=8000
+  CHROMA_COLLECTION=getmee_docs_dev
 
-   # Support email notification
-   SUPPORT_EMAIL=support@yourcompany.com
-   MAIL_USERNAME=your_email@gmail.com
-   MAIL_PASSWORD=your_app_password
-   MAIL_FROM=your_email@gmail.com
-   MAIL_SERVER=smtp.gmail.com
-   MAIL_PORT=587
+  # Support email notification
+  SUPPORT_EMAIL=support@yourcompany.com
+  MAIL_USERNAME=your_email@gmail.com
+  MAIL_PASSWORD=your_app_password
+  MAIL_FROM=your_email@gmail.com
+  MAIL_SERVER=smtp.gmail.com
+  MAIL_PORT=587
 
-   # Fallback behavior
-   ALLOW_GENERAL_FALLBACK=false
-   SUPPORT_EMAIL_COOLDOWN=300
-   ```
+  # Fallback behavior
+  ALLOW_GENERAL_FALLBACK=false
+  SUPPORT_EMAIL_COOLDOWN=300
+  ```
+
+  # To switch LLM providers, set LLM_PROVIDER and update LLM_API_KEY accordingly.
 
 3. **Start ChromaDB server**
    ```bash

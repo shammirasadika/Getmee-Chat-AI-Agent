@@ -22,13 +22,13 @@ const t = {
       "Platform features & setup",
       "User & group management"
     ],
-    quickLabel: "Quick Questions:",
+    quickLabel: "Try asking:",
     quickQuestions: [
-      "How does AI scoring work?",
-      "Interview preparation tips",
-      "How do I improve my answers?",
-      "What is GetMee?",
-      "How to create a strong resume?",
+      "I can't log into my account",
+      "How does white-label onboarding work?",
+      "I didn't receive my login email",
+      "The app keeps crashing",
+      "The video is not loading",
     ],
     botGreeting: "Hello! I'm GetMee AI Assistant. How can I help you today?",
     placeholder: "Type your message...",
@@ -48,13 +48,13 @@ const t = {
     subtitle: "Soy el Asistente IA de GetMee",
     askAbout: "Pregúntame sobre:",
     topics: ["Preparación para entrevistas", "Consejos para currículum", "Uso de la plataforma GetMee"],
-    quickLabel: "Preguntas rápidas:",
+    quickLabel: "Intenta preguntar:",
     quickQuestions: [
-      "¿Cómo funciona la puntuación con IA?",
-      "Consejos para preparar entrevistas",
-      "¿Cómo puedo mejorar mis respuestas?",
-      "¿Qué es GetMee?",
-      "¿Cómo crear un currículum sólido?",
+      "No puedo iniciar sesión en mi cuenta",
+      "¿Cómo funciona la incorporación de marca blanca?",
+      "No recibí mi correo de inicio de sesión",
+      "La aplicación se sigue cerrando",
+      "El video no se carga",
     ],
     botGreeting: "¡Hola! Soy el Asistente IA de GetMee. ¿En qué puedo ayudarte hoy?",
     placeholder: "Escribe tu mensaje...",
@@ -453,7 +453,7 @@ interface ChatBotProps {
   logoUrl?: string;
 }
 
-export default function ChatBot({ apiBase = "http://localhost:8001", logoUrl }: ChatBotProps) {
+export default function ChatBot({ apiBase = "http://localhost:8080", logoUrl }: ChatBotProps) {
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState<Language>("en");
   const [chatStarted, setChatStarted] = useState(false);

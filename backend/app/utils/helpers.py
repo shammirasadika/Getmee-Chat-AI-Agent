@@ -1,4 +1,68 @@
+# Common stopwords for name detection and other NLP tasks
+NAME_DETECTION_STOPWORDS = set([
+    'able', 'about', 'account', 'again', 'am', 'an', 'and', 'are', 'as', 'at', 'be', 'because', 'been', 'but', 'by', 'can', 'cannot', 'could', 'did', 'do', 'does', 'doing', 'for', 'from', 'had', 'has', 'have', 'having', 'he', 'her', 'here', 'hers', 'him', 'himself', 'his', 'how', 'i', 'if', 'in', 'into', 'is', 'it', 'its', 'me', 'more', 'most', 'my', 'myself', 'no', 'not', 'of', 'on', 'once', 'only', 'or', 'other', 'our', 'ours', 'ourselves', 'out', 'over', 'own', 'same', 'she', 'should', 'so', 'some', 'such', 'than', 'that', 'the', 'their', 'theirs', 'them', 'themselves', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too', 'under', 'until', 'up', 'very', 'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom', 'why', 'with', 'would', 'you', 'your', 'yours', 'yourself', 'yourselves', 'able', 'login', 'log', 'in', 'out', 'ready', 'happy', 'sad', 'good', 'bad', 'ok', 'okay', 'fine', 'thanks', 'thank', 'problem', 'issue', 'help', 'support', 'team', 'account', 'reset', 'password', 'email', 'contact', 'question', 'answer', 'user', 'admin', 'manager', 'customer', 'service', 'bot', 'assistant', 'ai', 'robot', 'system', 'test', 'testing', 'demo', 'sample', 'example', 'feedback', 'satisfied', 'unsatisfied', 'cannot', 'unable', 'not', 'to', 'my', 'name', 'is', 'i', 'am', "i'm", 'me', 'myself', 'your', 'you', 'he', 'she', 'it', 'we', 'they', 'this', 'that', 'these', 'those', 'here', 'there', 'where', 'when', 'why', 'how', 'a', 'an', 'the', 'and', 'or', 'but', 'if', 'because', 'as', 'until', 'while', 'of', 'at', 'by', 'for', 'with', 'about', 'against', 'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'from', 'up', 'down', 'on', 'off', 'over', 'under', 'again', 'further', 'then', 'once'
+])
 import re
+
+# Contraction map for query normalization
+_CONTRACTIONS = {
+    "can't": "cannot",
+    "cant": "cannot",
+    "won't": "will not",
+    "wont": "will not",
+    "don't": "do not",
+    "dont": "do not",
+    "didn't": "did not",
+    "didnt": "did not",
+    "doesn't": "does not",
+    "doesnt": "does not",
+    "isn't": "is not",
+    "isnt": "is not",
+    "aren't": "are not",
+    "arent": "are not",
+    "wasn't": "was not",
+    "wasnt": "was not",
+    "weren't": "were not",
+    "werent": "were not",
+    "hasn't": "has not",
+    "hasnt": "has not",
+    "haven't": "have not",
+    "havent": "have not",
+    "couldn't": "could not",
+    "couldnt": "could not",
+    "wouldn't": "would not",
+    "wouldnt": "would not",
+    "shouldn't": "should not",
+    "shouldnt": "should not",
+    "i'm": "i am",
+    "im": "i am",
+    "it's": "it is",
+    "its": "it is",
+    "that's": "that is",
+    "thats": "that is",
+    "what's": "what is",
+    "whats": "what is",
+    "there's": "there is",
+    "theres": "there is",
+    "they're": "they are",
+    "theyre": "they are",
+    "we're": "we are",
+    "were": "we are",
+    "you're": "you are",
+    "youre": "you are",
+    "let's": "let us",
+    "lets": "let us",
+}
+
+def normalize_query(text: str) -> str:
+    """Normalize user query for improved retrieval: lowercase, expand contractions, collapse spaces."""
+    text = text.lower().strip()
+    # Normalize curly/smart apostrophes to straight apostrophe
+    text = text.replace("\u2018", "'").replace("\u2019", "'")
+    for k, v in _CONTRACTIONS.items():
+        text = re.sub(rf"\b{re.escape(k)}\b", v, text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
 def safe_get(d: dict, key: str, default=None):
     return d[key] if key in d else default

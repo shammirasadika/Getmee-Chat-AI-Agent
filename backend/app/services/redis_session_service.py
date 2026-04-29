@@ -20,11 +20,8 @@ try:
 except ImportError:
     REDIS_AVAILABLE = False
 
-# Session TTL for chatbot sessions (default: 30 minutes / 1800 seconds)
-# NOTE: This value may be adjusted later based on client confirmation.
-import os
-SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "1800"))  # 30 minutes
-DEFAULT_TTL = SESSION_TTL_SECONDS
+# Default TTL for session keys: 30 minutes
+DEFAULT_TTL = 1800
 # Max recent messages kept in the messages list
 MAX_RECENT_MESSAGES = 20
 
@@ -134,13 +131,11 @@ class RedisSessionService:
         payload = json.dumps(message)
         if self.client:
             await self.client.rpush(key, payload)
-            await self.client.ltrim(key, -MAX_RECENT_MESSAGES, -1)
-            # Refresh TTL for all session keys on user activity
-            await self.refresh_session_ttl(session_key)
+            await self.client.expire(key, self.ttl)
         else:
             lst = self.memory.setdefault(key, [])
             lst.append(payload)
-            self.memory[key] = lst[-MAX_RECENT_MESSAGES:]
+            self.memory[key] = lst
 
     async def get_messages(self, session_key: str) -> List[dict]:
         """Return recent messages for context window."""

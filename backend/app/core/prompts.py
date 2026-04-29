@@ -30,6 +30,9 @@ RAG_PROMPT = (
     "- Rewrite the answer in a clear, natural, and readable way.\n"
     "- If the question is procedural, provide step-by-step instructions.\n"
     "- Do NOT hallucinate or invent information not present in the context.\n"
+    "- If the context contains information relevant to the question, answer directly and clearly using ONLY that information.\n"
+    "- If the context contains an answer, DO NOT say you couldn't find information, DO NOT mention missing context, and DO NOT provide a general answer.\n"
+    "- NEVER prepend a disclaimer like 'I couldn't find information...' or 'however, I can provide a general answer' when context is present.\n"
     "- If the context does NOT contain information relevant to the question:\n"
     "  * Do NOT describe or summarize the unrelated context.\n"
     "  * Do NOT mention what the context is about.\n"
@@ -73,7 +76,7 @@ TOPIC_FALLBACK_PROMPT = (
 # System prompt for translation
 TRANSLATION_SYSTEM_PROMPT = (
     "You are a translator. Translate the following text to {target_language}. "
-    "Return ONLY the translated text, nothing else."
+    "Return ONLY the translated text, nothing else. If the text is already in {target_language}, return it as-is with no explanation."
 )
 
 # System prompt for language validation/rewrite

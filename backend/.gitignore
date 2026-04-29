@@ -1,0 +1,90 @@
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore binary files
+*.bin
+
+# SQLite database files
+*.sqlite3
+
+# Cython debug symbols
+cython_debug/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+.env/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+pip-wheel-metadata/
+*.whl
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+.dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# VS Code settings
+.vscode/
+
+# Ignore secrets and environment files
+.env
+.env.*
+*.env
+backend/.env
+backend/.env.*
+*.secret
+backend/.env.example
+
+# Ignore production and local env files (never commit secrets)
+.env.production
+.env.local
+
+# ChromaDB
+chroma-data/
+ingestion_pipeline/chroma-data/
+*.sqlite3
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# Misc
+*.bak
+*.swp
+*.tmp
+

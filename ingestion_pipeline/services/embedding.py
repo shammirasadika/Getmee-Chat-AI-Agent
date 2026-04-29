@@ -1,11 +1,30 @@
 from sentence_transformers import SentenceTransformer
+import logging
 
-# Load the model once at module level for efficiency
-model = SentenceTransformer('all-MiniLM-L6-v2')  # 384-dim
+logger = logging.getLogger("embedding")
 
-def generate_embedding(text):
+# Load model once
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
+def generate_embeddings_in_batches(chunks, batch_size=4):
     """
-    Generate a 384-dim embedding for the given text using sentence-transformers.
+    Generate embeddings for all chunks using batch processing.
+    This ensures efficient memory usage and stable performance.
     """
-    embedding = model.encode(text)
-    return embedding.tolist()
+    try:
+        logger.info(f"Generating embeddings for {len(chunks)} chunks")
+
+        embeddings = model.encode(
+            chunks,
+            batch_size=batch_size,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+        )
+
+        logger.info("Embedding generation completed")
+
+        return embeddings.tolist()
+
+    except Exception as e:
+        logger.error(f"Embedding generation failed: {e}")
+        raise
