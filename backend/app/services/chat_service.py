@@ -25,8 +25,8 @@ YES_WORDS = set(["yes", "yeah", "yep", "sure", "ok", "okay", "vale", "sí", "si"
 NO_WORDS = set(["no", "nope", "nah", "nop", "no gracias"])
 
 SUPPORT_REQUESTS = set([
-    "i need human support", "i want human support", "connect me to support", "talk to human", "contact support", "i need help",
-    "necesito soporte humano", "quiero soporte humano", "conectar con soporte", "hablar con un humano", "contactar soporte", "necesito ayuda"
+    "i need human support", "i want human support", "connect me to support", "talk to human", "contact support",
+    "necesito soporte humano", "quiero soporte humano", "conectar con soporte", "hablar con un humano", "contactar soporte"
 ])
 STATIC_RESPONSES = {
     'en': {
@@ -90,6 +90,8 @@ class ChatService:
                 pattern = r'(^|\s)' + re.escape(phrase_norm) + r'(\s|$)'
                 if re.search(pattern, msg_norm):
                     detected.add(intent)
+        if self._matches_help_request(msg_norm):
+            detected.add("help_request")
         low_intent_pattern = self._detect_low_intent_pattern(message)
         if low_intent_pattern:
             detected.add(low_intent_pattern)
@@ -177,7 +179,17 @@ class ChatService:
             "hm", "hmm", "hmmm", "mm", "mmm", "um", "uhh", "ah", "oh", "yeah", "yup", "nope", "nah",
             # Spanish
             "mmm", "eh", "ah", "oh", "sí", "si", "no", "nop"
-        ]
+            ],
+            "help_request": [
+                # English
+                "i need help", "help", "help me", "can you help me", "can you help", "i need assistance",
+                "i need some help", "please help", "please help me", "could you help me", "i need support",
+                "help please", "need help", "i need help please",
+                # Spanish
+                "necesito ayuda", "ayuda", "ayúdame", "puedes ayudarme", "necesito asistencia",
+                "necesito algo de ayuda", "por favor ayúdame", "por favor ayuda", "necesito soporte",
+                "ayuda por favor", "necesito ayuda por favor"
+            ]
     }
 
     INTENT_RESPONSES = {
@@ -190,7 +202,8 @@ class ChatService:
             "acknowledgement": "Alright. Let me know if you need help with anything else.",
             "goodbye": "Goodbye! Feel free to come back anytime.",
             "low_intent": "Let me know if you need help with anything.",
-            "how_are_you": "I'm just a bot, but I'm here to help! How can I assist you today?"
+            "how_are_you": "I'm just a bot, but I'm here to help! How can I assist you today?",
+            "help_request": "Sure! I'm here to assist you. Please tell me what kind of help you need."
         },
         "es": {
             "greeting": "¡Hola! ¿En qué puedo ayudarte hoy?",
@@ -201,17 +214,39 @@ class ChatService:
             "acknowledgement": "De acuerdo. Avísame si necesitas ayuda con algo más.",
             "goodbye": "¡Adiós! No dudes en volver cuando quieras.",
             "low_intent": "Avísame si necesitas ayuda con algo.",
-            "how_are_you": "¡Estoy bien, gracias! Soy un bot, pero estoy aquí para ayudarte. ¿En qué puedo ayudarte hoy?"
+            "how_are_you": "¡Estoy bien, gracias! Soy un bot, pero estoy aquí para ayudarte. ¿En qué puedo ayudarte hoy?",
+            "help_request": "Claro, estoy aquí para ayudarte. Por favor, dime qué tipo de ayuda necesitas."
         }
     }
 
     def _normalize_text(self, text: str) -> str:
-        # Lowercase, remove punctuation, and strip spaces
-        import string
-        return text.lower().translate(str.maketrans('', '', string.punctuation)).strip()
+        # Lowercase, fold accents, normalize punctuation to spaces, and collapse whitespace.
+        import unicodedata
+
+        normalized = unicodedata.normalize("NFKD", text.casefold())
+        normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+        normalized = re.sub(r"[^\w\s]", " ", normalized)
+        normalized = re.sub(r"_", " ", normalized)
+        normalized = re.sub(r"\s+", " ", normalized)
+        return normalized.strip()
+
+    def _matches_help_request(self, normalized_message: str) -> bool:
+        help_patterns = [
+            r"\bi(?:\s+really|\s+just|\s+kind\s+of|\s+still|\s+urgently|\s+please)?\s+need(?:\s+some|\s+more)?\s+(?:help|assistance|support)\b",
+            r"\b(?:can|could|would)\s+you\s+(?:please\s+)?help\s+me\b",
+            r"\b(?:please\s+)?help\s+me\b",
+            r"\bhelp\s+please\b",
+            r"\bnecesito(?:\s+algo\s+de|\s+mas)?\s+(?:ayuda|asistencia|soporte)\b",
+            r"\b(?:puedes|podrias)\s+ayudarme\b",
+            r"\bpor\s+favor\s+ayudame\b",
+            r"\bayuda\s+por\s+favor\b",
+        ]
+        return any(re.search(pattern, normalized_message) for pattern in help_patterns)
 
     def _detect_intent(self, message: str) -> str | None:
         msg_norm = self._normalize_text(message)
+        if self._matches_help_request(msg_norm):
+            return "help_request"
         for intent, phrases in self.INTENT_PATTERNS.items():
             for phrase in phrases:
                 phrase_norm = self._normalize_text(phrase)
@@ -1210,6 +1245,7 @@ class ChatService:
             "acknowledgement",
             "goodbye",
             "low_intent",
+            "help_request",
         }
 
         has_casual = bool(detected_intents & casual_intents)
@@ -1228,6 +1264,7 @@ class ChatService:
                 "acknowledgement",
                 "goodbye",
                 "low_intent",
+                "help_request",
             ]
 
             for intent_name in priority_order:
