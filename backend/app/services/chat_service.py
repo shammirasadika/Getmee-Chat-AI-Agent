@@ -149,7 +149,7 @@ class ChatService:
         ],
         "greeting": [
             # English
-            "hi", "hello", "hellow", "hey", "hey there", "hello there", "hi there", "yo", "whats up?", "what's up?",
+            "hi", "hello", "hellow", "hey", "hey there", "hello there", "hi there", "yo",
             # Spanish
             "hola", "hola 👋", "hola!", "qué tal", "qué tal?", "buenas", "¿qué pasa?"
         ],
@@ -270,6 +270,25 @@ class ChatService:
 
     FEEDBACK_INTERVAL = 3  # Configurable interval for per-message feedback
     OVERALL_RATING_INTERVAL = 3  # Configurable interval for overall session rating popup
+
+    def _is_rude_message(self, message: str) -> bool:
+        """Detect rude, aggressive, or abusive language."""
+        msg = message.lower()
+        rude_patterns = [
+            r"\bfuck\b", r"\bfucking\b", r"\bfucker\b", r"\bfuck you\b",
+            r"\bshit\b", r"\bbullshit\b", r"\bbs\b",
+            r"\basshole\b", r"\basthole\b", r"\bass hole\b",
+            r"\bidiot\b", r"\bstupid\b", r"\bdumb\b", r"\bmoron\b", r"\bimbecile\b",
+            r"\bgo to hell\b", r"\bgo hell\b", r"\bhell with you\b",
+            r"\bshut up\b", r"\bpiss off\b", r"\bscrew you\b", r"\bget lost\b",
+            r"\bworthless\b", r"\buseless\b", r"\bpiece of (shit|crap)\b",
+            r"\bbitch\b", r"\bwhore\b", r"\bslut\b", r"\bbasura\b",
+            # Spanish
+            r"\bvete al diablo\b", r"\bvete a la mierda\b", r"\bidiota\b",
+            r"\bestupido\b", r"\bestúpido\b", r"\bimbécil\b", r"\bpendejo\b",
+            r"\bputa\b", r"\bcallate\b", r"\bcállate\b", r"\binútil\b",
+        ]
+        return any(re.search(pat, msg) for pat in rude_patterns)
 
     def _contains_support_keywords(self, answer: str) -> bool:
         keywords = [
@@ -1231,7 +1250,32 @@ class ChatService:
                 escalation_source="Support intent",
             )
 
-        # 3. Small talk and low intent detection (multi-intent, safe)
+        # 3. Rude/aggressive language detection
+        if self._is_rude_message(request.message):
+            rude_reply = {
+                "en": "I understand you may be frustrated. I'm here to help, and I'll do my best to assist.",
+                "es": "Entiendo que puedes estar frustrado/a. Estoy aquí para ayudarte y haré todo lo posible para asistirte.",
+            }
+            rude_answer = rude_reply.get(lang, rude_reply["en"])
+            await self.message_service.redis_session.push_message(
+                session_key, {"role": "user", "text": request.message, "language": lang}
+            )
+            await self.message_service.redis_session.push_message(
+                session_key, {"role": "bot", "text": rude_answer, "language": lang}
+            )
+            return ChatResponse(
+                answer=rude_answer,
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
+
+        # 4. Small talk and low intent detection (multi-intent, safe)
         lang = request.language or "en"
         detected_intents = self._detect_intents(request.message)
 
@@ -1251,6 +1295,41 @@ class ChatService:
         has_casual = bool(detected_intents & casual_intents)
 
         if has_casual:
+            # Combined greeting + how_are_you → single merged reply
+            # Check actual message text for greeting words to avoid false positives
+            _has_greeting_word = bool(re.search(
+                r'\b(hi|hello|hey|hola|hellow)\b',
+                request.message, re.IGNORECASE
+            ))
+            _has_time_greeting = bool(detected_intents & {"buenos_dias", "buenas_tardes", "buenas_noches"})
+            if "how_are_you" in detected_intents and (_has_greeting_word or _has_time_greeting):
+                combined_reply = {
+                    "en": "Hi, I'm just a bot. How can I help you today?",
+                    "es": "Hola, soy un bot. ¿En qué puedo ayudarte hoy?",
+                }
+                answer = combined_reply.get(lang, combined_reply["en"])
+                await self.message_service.redis_session.push_message(
+                    session_key, {"role": "user", "text": request.message, "language": lang}
+                )
+                await self.message_service.redis_session.push_message(
+                    session_key, {"role": "bot", "text": answer, "language": lang}
+                )
+                return ChatResponse(
+                    answer=answer,
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
+
+            resolved_intents = set(detected_intents)
+            # If a time-based greeting is present, suppress plain greeting (avoid duplicate replies)
+            if resolved_intents & {"buenos_dias", "buenas_tardes", "buenas_noches"}:
+                resolved_intents.discard("greeting")
             responses = []
             intent_resp = self.INTENT_RESPONSES.get(lang, self.INTENT_RESPONSES["en"])
 
@@ -1268,7 +1347,7 @@ class ChatService:
             ]
 
             for intent_name in priority_order:
-                if intent_name in detected_intents:
+                if intent_name in resolved_intents:
                     response_text = intent_resp.get(intent_name)
                     if response_text and response_text not in responses:
                         responses.append(response_text)
