@@ -25,8 +25,8 @@ YES_WORDS = set(["yes", "yeah", "yep", "sure", "ok", "okay", "vale", "sí", "si"
 NO_WORDS = set(["no", "nope", "nah", "nop", "no gracias"])
 
 SUPPORT_REQUESTS = set([
-    "i need human support", "i want human support", "connect me to support", "talk to human", "contact support", "i need help",
-    "necesito soporte humano", "quiero soporte humano", "conectar con soporte", "hablar con un humano", "contactar soporte", "necesito ayuda"
+    "i need human support", "i want human support", "connect me to support", "talk to human", "contact support",
+    "necesito soporte humano", "quiero soporte humano", "conectar con soporte", "hablar con un humano", "contactar soporte"
 ])
 STATIC_RESPONSES = {
     'en': {
@@ -90,6 +90,8 @@ class ChatService:
                 pattern = r'(^|\s)' + re.escape(phrase_norm) + r'(\s|$)'
                 if re.search(pattern, msg_norm):
                     detected.add(intent)
+        if self._matches_help_request(msg_norm):
+            detected.add("help_request")
         low_intent_pattern = self._detect_low_intent_pattern(message)
         if low_intent_pattern:
             detected.add(low_intent_pattern)
@@ -147,7 +149,7 @@ class ChatService:
         ],
         "greeting": [
             # English
-            "hi", "hello", "hellow", "hey", "hey there", "hello there", "hi there", "yo", "whats up?", "what's up?",
+            "hi", "hello", "hellow", "hey", "hey there", "hello there", "hi there", "yo",
             # Spanish
             "hola", "hola 👋", "hola!", "qué tal", "qué tal?", "buenas", "¿qué pasa?"
         ],
@@ -177,7 +179,17 @@ class ChatService:
             "hm", "hmm", "hmmm", "mm", "mmm", "um", "uhh", "ah", "oh", "yeah", "yup", "nope", "nah",
             # Spanish
             "mmm", "eh", "ah", "oh", "sí", "si", "no", "nop"
-        ]
+            ],
+            "help_request": [
+                # English
+                "i need help", "help", "help me", "can you help me", "can you help", "i need assistance",
+                "i need some help", "please help", "please help me", "could you help me", "i need support",
+                "help please", "need help", "i need help please",
+                # Spanish
+                "necesito ayuda", "ayuda", "ayúdame", "puedes ayudarme", "necesito asistencia",
+                "necesito algo de ayuda", "por favor ayúdame", "por favor ayuda", "necesito soporte",
+                "ayuda por favor", "necesito ayuda por favor"
+            ]
     }
 
     INTENT_RESPONSES = {
@@ -190,7 +202,8 @@ class ChatService:
             "acknowledgement": "Alright. Let me know if you need help with anything else.",
             "goodbye": "Goodbye! Feel free to come back anytime.",
             "low_intent": "Let me know if you need help with anything.",
-            "how_are_you": "I'm just a bot, but I'm here to help! How can I assist you today?"
+            "how_are_you": "I'm just a bot, but I'm here to help! How can I assist you today?",
+            "help_request": "Sure! I'm here to assist you. Please tell me what kind of help you need."
         },
         "es": {
             "greeting": "¡Hola! ¿En qué puedo ayudarte hoy?",
@@ -201,17 +214,39 @@ class ChatService:
             "acknowledgement": "De acuerdo. Avísame si necesitas ayuda con algo más.",
             "goodbye": "¡Adiós! No dudes en volver cuando quieras.",
             "low_intent": "Avísame si necesitas ayuda con algo.",
-            "how_are_you": "¡Estoy bien, gracias! Soy un bot, pero estoy aquí para ayudarte. ¿En qué puedo ayudarte hoy?"
+            "how_are_you": "¡Estoy bien, gracias! Soy un bot, pero estoy aquí para ayudarte. ¿En qué puedo ayudarte hoy?",
+            "help_request": "Claro, estoy aquí para ayudarte. Por favor, dime qué tipo de ayuda necesitas."
         }
     }
 
     def _normalize_text(self, text: str) -> str:
-        # Lowercase, remove punctuation, and strip spaces
-        import string
-        return text.lower().translate(str.maketrans('', '', string.punctuation)).strip()
+        # Lowercase, fold accents, normalize punctuation to spaces, and collapse whitespace.
+        import unicodedata
+
+        normalized = unicodedata.normalize("NFKD", text.casefold())
+        normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+        normalized = re.sub(r"[^\w\s]", " ", normalized)
+        normalized = re.sub(r"_", " ", normalized)
+        normalized = re.sub(r"\s+", " ", normalized)
+        return normalized.strip()
+
+    def _matches_help_request(self, normalized_message: str) -> bool:
+        help_patterns = [
+            r"\bi(?:\s+really|\s+just|\s+kind\s+of|\s+still|\s+urgently|\s+please)?\s+need(?:\s+some|\s+more)?\s+(?:help|assistance|support)\b",
+            r"\b(?:can|could|would)\s+you\s+(?:please\s+)?help\s+me\b",
+            r"\b(?:please\s+)?help\s+me\b",
+            r"\bhelp\s+please\b",
+            r"\bnecesito(?:\s+algo\s+de|\s+mas)?\s+(?:ayuda|asistencia|soporte)\b",
+            r"\b(?:puedes|podrias)\s+ayudarme\b",
+            r"\bpor\s+favor\s+ayudame\b",
+            r"\bayuda\s+por\s+favor\b",
+        ]
+        return any(re.search(pattern, normalized_message) for pattern in help_patterns)
 
     def _detect_intent(self, message: str) -> str | None:
         msg_norm = self._normalize_text(message)
+        if self._matches_help_request(msg_norm):
+            return "help_request"
         for intent, phrases in self.INTENT_PATTERNS.items():
             for phrase in phrases:
                 phrase_norm = self._normalize_text(phrase)
@@ -235,6 +270,49 @@ class ChatService:
 
     FEEDBACK_INTERVAL = 3  # Configurable interval for per-message feedback
     OVERALL_RATING_INTERVAL = 3  # Configurable interval for overall session rating popup
+
+    def _spell_correct(self, text: str, language: str = "en") -> str:
+        """Spell-correct query text before RAG retrieval. Skips short words, numbers, and non-alpha tokens."""
+        try:
+            from spellchecker import SpellChecker
+            lang_code = "es" if language == "es" else "en"
+            spell = SpellChecker(language=lang_code)
+            words = text.split()
+            corrected = []
+            for word in words:
+                clean_word = re.sub(r"[^\w]", "", word).lower()
+                # Skip: short words, non-alpha, numbers
+                if len(clean_word) <= 3 or not clean_word.isalpha():
+                    corrected.append(word)
+                    continue
+                correction = spell.correction(clean_word)
+                if correction and correction != clean_word:
+                    print(f"[SpellCheck] '{clean_word}' → '{correction}'", flush=True)
+                    corrected.append(correction)
+                else:
+                    corrected.append(word)
+            return " ".join(corrected)
+        except Exception:
+            return text
+
+    def _is_rude_message(self, message: str) -> bool:
+        """Detect rude, aggressive, or abusive language."""
+        msg = message.lower()
+        rude_patterns = [
+            r"\bfuck\b", r"\bfucking\b", r"\bfucker\b", r"\bfuck you\b",
+            r"\bshit\b", r"\bbullshit\b", r"\bbs\b",
+            r"\basshole\b", r"\basthole\b", r"\bass hole\b",
+            r"\bidiot\b", r"\bstupid\b", r"\bdumb\b", r"\bmoron\b", r"\bimbecile\b",
+            r"\bgo to hell\b", r"\bgo hell\b", r"\bhell with you\b",
+            r"\bshut up\b", r"\bpiss off\b", r"\bscrew you\b", r"\bget lost\b",
+            r"\bworthless\b", r"\buseless\b", r"\bpiece of (shit|crap)\b",
+            r"\bbitch\b", r"\bwhore\b", r"\bslut\b", r"\bbasura\b",
+            # Spanish
+            r"\bvete al diablo\b", r"\bvete a la mierda\b", r"\bidiota\b",
+            r"\bestupido\b", r"\bestúpido\b", r"\bimbécil\b", r"\bpendejo\b",
+            r"\bputa\b", r"\bcallate\b", r"\bcállate\b", r"\binútil\b",
+        ]
+        return any(re.search(pat, msg) for pat in rude_patterns)
 
     def _contains_support_keywords(self, answer: str) -> bool:
         keywords = [
@@ -1196,7 +1274,32 @@ class ChatService:
                 escalation_source="Support intent",
             )
 
-        # 3. Small talk and low intent detection (multi-intent, safe)
+        # 3. Rude/aggressive language detection
+        if self._is_rude_message(request.message):
+            rude_reply = {
+                "en": "I understand you may be frustrated. I'm here to help, and I'll do my best to assist.",
+                "es": "Entiendo que puedes estar frustrado/a. Estoy aquí para ayudarte y haré todo lo posible para asistirte.",
+            }
+            rude_answer = rude_reply.get(lang, rude_reply["en"])
+            await self.message_service.redis_session.push_message(
+                session_key, {"role": "user", "text": request.message, "language": lang}
+            )
+            await self.message_service.redis_session.push_message(
+                session_key, {"role": "bot", "text": rude_answer, "language": lang}
+            )
+            return ChatResponse(
+                answer=rude_answer,
+                language=lang,
+                sources=[],
+                fallback_used=False,
+                requires_email=False,
+                retrieval_language=lang,
+                message_id=None,
+                session_uuid=str(session_uuid),
+                show_feedback=False,
+            )
+
+        # 4. Small talk and low intent detection (multi-intent, safe)
         lang = request.language or "en"
         detected_intents = self._detect_intents(request.message)
 
@@ -1210,11 +1313,50 @@ class ChatService:
             "acknowledgement",
             "goodbye",
             "low_intent",
+            "help_request",
         }
 
         has_casual = bool(detected_intents & casual_intents)
 
         if has_casual:
+            # Combined greeting + how_are_you → single merged reply
+            # Check actual message text for greeting words to avoid false positives
+            _has_greeting_word = bool(re.search(
+                r'\b(hi|hello|hey|hola|hellow)\b',
+                request.message, re.IGNORECASE
+            ))
+            _has_time_greeting = bool(detected_intents & {"buenos_dias", "buenas_tardes", "buenas_noches"})
+            if "how_are_you" in detected_intents and (_has_greeting_word or _has_time_greeting):
+                combined_reply = {
+                    "en": "Hi, I'm just a bot. How can I help you today?",
+                    "es": "Hola, soy un bot. ¿En qué puedo ayudarte hoy?",
+                }
+                answer = combined_reply.get(lang, combined_reply["en"])
+                await self.message_service.redis_session.push_message(
+                    session_key, {"role": "user", "text": request.message, "language": lang}
+                )
+                await self.message_service.redis_session.push_message(
+                    session_key, {"role": "bot", "text": answer, "language": lang}
+                )
+                return ChatResponse(
+                    answer=answer,
+                    language=lang,
+                    sources=[],
+                    fallback_used=False,
+                    requires_email=False,
+                    retrieval_language=lang,
+                    message_id=None,
+                    session_uuid=str(session_uuid),
+                    show_feedback=False,
+                )
+
+            resolved_intents = set(detected_intents)
+            # If a time-based greeting is present, suppress plain greeting (avoid duplicate replies)
+            if resolved_intents & {"buenos_dias", "buenas_tardes", "buenas_noches"}:
+                resolved_intents.discard("greeting")
+            # If any greeting is present, suppress help_request (greeting already asks "How can I help you?")
+            if resolved_intents & {"greeting", "buenos_dias", "buenas_tardes", "buenas_noches"}:
+                resolved_intents.discard("help_request")
             responses = []
             intent_resp = self.INTENT_RESPONSES.get(lang, self.INTENT_RESPONSES["en"])
 
@@ -1228,10 +1370,11 @@ class ChatService:
                 "acknowledgement",
                 "goodbye",
                 "low_intent",
+                "help_request",
             ]
 
             for intent_name in priority_order:
-                if intent_name in detected_intents:
+                if intent_name in resolved_intents:
                     response_text = intent_resp.get(intent_name)
                     if response_text and response_text not in responses:
                         responses.append(response_text)
@@ -1301,11 +1444,14 @@ class ChatService:
             # Insert name if available
             if name:
                 if lang == 'es':
-                    nice_msg = f"{base_nice} {name}!"
+                    nice_msg = f"¡Mucho gusto, {name}! ¿En qué puedo ayudarte hoy?"
                 else:
-                    nice_msg = f"{base_nice} {name}!"
+                    nice_msg = f"Nice to meet you, {name}! How can I help you today?"
             else:
-                nice_msg = base_nice
+                if lang == 'es':
+                    nice_msg = f"{base_nice} ¿En qué puedo ayudarte hoy?"
+                else:
+                    nice_msg = f"{base_nice} How can I help you today?"
             await self.message_service.redis_session.push_message(session_key, {"role": "user", "text": request.message, "language": lang})
             await self.message_service.redis_session.push_message(session_key, {"role": "bot", "text": nice_msg, "language": lang})
             return ChatResponse(
@@ -1339,11 +1485,15 @@ class ChatService:
         FALLBACK_DISTANCE_THRESHOLD = 1.0
 
         # 1. Build primary query in selected UI language
+        # Spell-correct the input before query normalization
+        spell_corrected_message = self._spell_correct(request.message, input_language)
+        print(f"[SpellCheck] Original: '{request.message}' → Corrected: '{spell_corrected_message}'", flush=True)
+
         if input_language == selected_language:
-            primary_query = normalize_query(request.message)
+            primary_query = normalize_query(spell_corrected_message)
         else:
             raw_translated = await self.llm_client.translate(
-                request.message,
+                spell_corrected_message,
                 target_language=self.language_service.get_language_name(selected_language)
             )
             primary_query = normalize_query(raw_translated)
