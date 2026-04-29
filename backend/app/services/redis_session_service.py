@@ -32,7 +32,7 @@ class RedisSessionService:
     def __init__(self, url: str, ttl: int = DEFAULT_TTL):
         self.url = url
         # Always use centralized TTL config
-        self.ttl = SESSION_TTL_SECONDS
+        self.ttl = ttl
         self.memory: Dict[str, Any] = {}  # in-memory fallback
         if REDIS_AVAILABLE:
             self.client = aioredis.from_url(url, decode_responses=True)
