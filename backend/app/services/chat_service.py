@@ -1330,6 +1330,9 @@ class ChatService:
             # If a time-based greeting is present, suppress plain greeting (avoid duplicate replies)
             if resolved_intents & {"buenos_dias", "buenas_tardes", "buenas_noches"}:
                 resolved_intents.discard("greeting")
+            # If any greeting is present, suppress help_request (greeting already asks "How can I help you?")
+            if resolved_intents & {"greeting", "buenos_dias", "buenas_tardes", "buenas_noches"}:
+                resolved_intents.discard("help_request")
             responses = []
             intent_resp = self.INTENT_RESPONSES.get(lang, self.INTENT_RESPONSES["en"])
 
