@@ -271,6 +271,30 @@ class ChatService:
     FEEDBACK_INTERVAL = 3  # Configurable interval for per-message feedback
     OVERALL_RATING_INTERVAL = 3  # Configurable interval for overall session rating popup
 
+    def _spell_correct(self, text: str, language: str = "en") -> str:
+        """Spell-correct query text before RAG retrieval. Skips short words, numbers, and non-alpha tokens."""
+        try:
+            from spellchecker import SpellChecker
+            lang_code = "es" if language == "es" else "en"
+            spell = SpellChecker(language=lang_code)
+            words = text.split()
+            corrected = []
+            for word in words:
+                clean_word = re.sub(r"[^\w]", "", word).lower()
+                # Skip: short words, non-alpha, numbers
+                if len(clean_word) <= 3 or not clean_word.isalpha():
+                    corrected.append(word)
+                    continue
+                correction = spell.correction(clean_word)
+                if correction and correction != clean_word:
+                    print(f"[SpellCheck] '{clean_word}' → '{correction}'", flush=True)
+                    corrected.append(correction)
+                else:
+                    corrected.append(word)
+            return " ".join(corrected)
+        except Exception:
+            return text
+
     def _is_rude_message(self, message: str) -> bool:
         """Detect rude, aggressive, or abusive language."""
         msg = message.lower()
@@ -1461,11 +1485,15 @@ class ChatService:
         FALLBACK_DISTANCE_THRESHOLD = 1.0
 
         # 1. Build primary query in selected UI language
+        # Spell-correct the input before query normalization
+        spell_corrected_message = self._spell_correct(request.message, input_language)
+        print(f"[SpellCheck] Original: '{request.message}' → Corrected: '{spell_corrected_message}'", flush=True)
+
         if input_language == selected_language:
-            primary_query = normalize_query(request.message)
+            primary_query = normalize_query(spell_corrected_message)
         else:
             raw_translated = await self.llm_client.translate(
-                request.message,
+                spell_corrected_message,
                 target_language=self.language_service.get_language_name(selected_language)
             )
             primary_query = normalize_query(raw_translated)

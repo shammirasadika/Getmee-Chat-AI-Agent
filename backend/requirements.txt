@@ -12,3 +12,4 @@ httpx
 fastapi-mail
 motor
 pymongo
+pyspellchecker
