@@ -1,5 +1,67 @@
 # Backend API Documentation
 
+## API Request Attribute Reference
+
+### Quick Reference Table
+
+| API Request              | Main Attributes                                      |
+|-------------------------|-----------------------------------------------------|
+| MessageFeedbackRequest  | session_key, message_id, feedback                    |
+| SessionFeedbackRequest  | session_key, rating, comment                         |
+| EndChatRequest          | session_key                                          |
+| TryAgainRequest         | session_key                                          |
+| SupportSubmitRequest    | session_id, user_email, user_message, language, source|
+| ContactSupportRequest   | session_key, user_email, issue_summary, source        |
+| ChatRequest             | message, session_id, language, unsatisfied_click, recontact_confirmed, recontact_declined |
+
+Refer to the detailed descriptions below for attribute meanings.
+
+This section explains the request attributes for each main API endpoint.
+
+### MessageFeedbackRequest
+Submitted when a user clicks Satisfied / Not Satisfied on a bot answer.
+- **session_key**: `str` — Unique session identifier (e.g., "abc123")
+- **message_id**: `str` — ID of the bot message being rated
+- **feedback**: `str` — "satisfied" or "not_satisfied"
+
+### SessionFeedbackRequest
+Submitted when a user rates the whole conversation at end of chat.
+- **session_key**: `str` — Unique session identifier
+- **rating**: `int` — 1 to 5 star rating
+- **comment**: `Optional[str]` — Optional user comment
+
+### EndChatRequest
+Marks the chat as ended.
+- **session_key**: `str` — Unique session identifier
+
+### TryAgainRequest
+Resets support escalation state after user retries.
+- **session_key**: `str` — Unique session identifier
+
+### SupportSubmitRequest
+Submit a support request after the user provides their email.
+- **session_id**: `str` — Unique session identifier
+- **user_email**: `EmailStr` — User's email address
+- **user_message**: `str` — User's support message
+- **language**: `Optional[str]` — Language code (default "en")
+- **source**: `Optional[str]` — Source of escalation (e.g., "rag_fallback", "user_unsatisfied")
+
+### ContactSupportRequest
+Create a support ticket after user confirms they want human help.
+- **session_key**: `str` — Unique session identifier
+- **user_email**: `Optional[str]` — User's email (optional)
+- **issue_summary**: `Optional[str]` — Short summary of the issue (auto-derived if empty)
+- **source**: `Optional[str]` — Escalation source
+
+### ChatRequest
+Main chat endpoint for user messages.
+- **message**: `str` — User's chat message
+- **session_id**: `str` — Unique session identifier
+- **language**: `Optional[str]` — Language code (e.g., "en")
+- **unsatisfied_click**: `Optional[bool]` — If user clicked "not satisfied"
+- **recontact_confirmed**: `bool` — If user confirmed recontact
+- **recontact_declined**: `bool` — If user declined recontact
+
 This document describes the main backend API endpoints, their purpose, and usage for the Getmee Chat AI Agent backend.
 
 ---
@@ -17,15 +79,6 @@ This document describes the main backend API endpoints, their purpose, and usage
 - **Request Body:** `SessionFeedbackRequest`
 - **Response:** `SessionFeedbackResponse`
 
-### POST `/api/feedback/end-chat`  <!-- Not in use, keep for future -->
-- **Purpose:** Mark the chat as ended and signal that session feedback should be shown.  
-- **Request Body:** `EndChatRequest`
-- **Response:** `EndChatResponse`
-
-### POST `/api/feedback/try-again`  <!-- Not in use, keep for future -->
-- **Purpose:** User chose Try Again after Not Satisfied — resets support state.  
-- **Request Body:** `TryAgainRequest`
-- **Response:** `TryAgainResponse`
 
 
 ### POST `/api/support/`
