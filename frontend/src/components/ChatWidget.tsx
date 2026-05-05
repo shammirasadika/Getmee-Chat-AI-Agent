@@ -1,13 +1,25 @@
-  // Type guard for fallback message object
-  function isFallbackObj(msg: unknown): msg is { _botDirectedSupport?: boolean; _source?: string } {
-    return (
-      typeof msg === "object" &&
-      msg !== null &&
-      ("_botDirectedSupport" in msg || "_source" in msg)
-    );
-  }
+// Type guard for fallback message object
+function isFallbackObj(
+  msg: unknown,
+): msg is { _botDirectedSupport?: boolean; _source?: string } {
+  return (
+    typeof msg === "object" &&
+    msg !== null &&
+    ("_botDirectedSupport" in msg || "_source" in msg)
+  );
+}
 import { useState, useRef, useEffect } from "react";
-import { Send, Mail, Loader2, Globe, RotateCcw, MessageCircle, Sparkles, SmilePlus, Frown, Upload } from "lucide-react";
+import {
+  Send,
+  Mail,
+  Loader2,
+  Globe,
+  RotateCcw,
+  MessageCircle,
+  Sparkles,
+  SmilePlus,
+  Frown,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import logo from "@/assets/getmee-logo.svg.png";
 
@@ -123,11 +135,10 @@ const TypingIndicator = () => (
   </div>
 );
 
-
 const ChatWidget = () => {
   const [lang, setLang] = useState<Language>("en");
-    // Translation object for current language
-    const i = translations[lang];
+  // Translation object for current language
+  const i = translations[lang];
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatStarted, setChatStarted] = useState(false);
@@ -135,8 +146,11 @@ const ChatWidget = () => {
   const [sessionId] = useState(generateSessionId);
 
   // UI state
-  const [showRecontactConfirmation, setShowRecontactConfirmation] = useState(false);
-  const [pendingRecontactMsg, setPendingRecontactMsg] = useState<string|null>(null);
+  const [showRecontactConfirmation, setShowRecontactConfirmation] =
+    useState(false);
+  const [pendingRecontactMsg, setPendingRecontactMsg] = useState<string | null>(
+    null,
+  );
   const [pendingRecontactData, setPendingRecontactData] = useState<any>(null);
   const [recontactLoading, setRecontactLoading] = useState(false);
   const [recontactJustHandled, setRecontactJustHandled] = useState(false);
@@ -150,7 +164,7 @@ const ChatWidget = () => {
   const [showSessionRating, setShowSessionRating] = useState(false);
   const [pendingSessionRating, setPendingSessionRating] = useState(false);
   const [sessionRating, setSessionRating] = useState(0);
-  const [feedbackMap, setFeedbackMap] = useState<{[key: string]: string}>({});
+  const [feedbackMap, setFeedbackMap] = useState<{ [key: string]: string }>({});
   const [meaningfulAnswerCount, setMeaningfulAnswerCount] = useState(0);
   const [satisfactionShown, setSatisfactionShown] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
@@ -201,20 +215,34 @@ const ChatWidget = () => {
       console.log("[ChatWidget] API response:", data);
 
       // Always show bot answer as chat bubble
-      const isKbAnswer = data.show_feedback !== false && !data.fallback_used && !data.requires_email;
-      const newMeaningfulCount = isKbAnswer ? meaningfulAnswerCount + 1 : meaningfulAnswerCount;
+      const isKbAnswer =
+        data.show_feedback !== false &&
+        !data.fallback_used &&
+        !data.requires_email;
+      const newMeaningfulCount = isKbAnswer
+        ? meaningfulAnswerCount + 1
+        : meaningfulAnswerCount;
       if (isKbAnswer) setMeaningfulAnswerCount(newMeaningfulCount);
 
       setMessages((prev) => {
         const updated = [
           ...prev,
-          { text: data.answer, isUser: false, time: getTime(), messageId: data.message_id, show_feedback: data.show_feedback },
+          {
+            text: data.answer,
+            isUser: false,
+            time: getTime(),
+            messageId: data.message_id,
+            show_feedback: data.show_feedback,
+          },
         ];
         // After 2 meaningful KB answers, show a separate satisfaction prompt bubble
         if (isKbAnswer && newMeaningfulCount >= 2 && !satisfactionShown) {
           setSatisfactionShown(true);
           updated.push({
-            text: lang === 'es' ? '¿Estás satisfecho con la ayuda del asistente?' : 'Are you satisfied with the assistant\'s help?',
+            text:
+              lang === "es"
+                ? "¿Estás satisfecho con la ayuda del asistente?"
+                : "Are you satisfied with the assistant's help?",
             isUser: false,
             time: getTime(),
             isSatisfactionPrompt: true,
@@ -241,7 +269,9 @@ const ChatWidget = () => {
 
       // Show support form if requires_email is true (regardless of show_support_options)
       if (data.requires_email === true) {
-        console.log("[ChatWidget] requires_email is true, opening support popup");
+        console.log(
+          "[ChatWidget] requires_email is true, opening support popup",
+        );
         setShowRecontactConfirmation(false);
         setPendingRecontactMsg(null);
         setPendingRecontactData(null);
@@ -293,192 +323,212 @@ const ChatWidget = () => {
       ]);
       setChatStarted(true);
     } else {
-      setMessages((prev) => [
-        ...prev,
-        { text, isUser: true, time: getTime() },
-      ]);
+      setMessages((prev) => [...prev, { text, isUser: true, time: getTime() }]);
     }
     setMessage("");
     sendToApi(text);
     inputRef.current?.focus();
   };
 
-    // Only one handleSubmitEmail should exist (the one using supportEmail)
-    const handleSubmitEmail = async () => {
-      if (!supportEmail.trim()) return;
+  // Only one handleSubmitEmail should exist (the one using supportEmail)
+  const handleSubmitEmail = async () => {
+    if (!supportEmail.trim()) return;
 
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(supportEmail)) {
-        setMessages((prev) => [
-          ...prev,
-          { text: i.invalidEmail, isUser: false, time: getTime() },
-        ]);
-        return;
-      }
-
-      setIsSubmittingEmail(true);
-
-      try {
-        // Relay escalation_source from backend only
-        const res = await fetch(`${API_BASE}/api/support/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_id: sessionId,
-            user_email: supportEmail,
-            user_message: supportComment || lastFallbackMessage,
-            language: lang,
-            escalation_source: escalationSource,
-          }),
-        });
-        if (!res.ok) throw new Error(`Support API error: ${res.status}`);
-        const data = await res.json();
-
-        // (Support ticket creation now handled by backend)
-
-        setShowSupportForm(false);
-        setSupportEmail("");
-        setMessages((prev) => [
-          ...prev,
-          { text: data.message || i.emailSuccess, isUser: false, time: getTime() },
-        ]);
-        setSupportComment("");
-        setSupportSubmitLabel(i.submit);
-        // After closing email popup, if session rating was pending, show it now
-        if (pendingSessionRating) {
-          setShowSessionRating(true);
-          setPendingSessionRating(false);
-        }
-      } catch (err) {
-        setMessages((prev) => [
-          ...prev,
-          { text: i.emailError, isUser: false, time: getTime() },
-        ]);
-      } finally {
-        setIsSubmittingEmail(false);
-      }
-    };
-
-    // Language dropdown state
-    const [showLangDropdown, setShowLangDropdown] = useState(false);
-
-    // Feedback API call
-    const sendFeedback = async (messageId: string, feedbackType: "satisfied" | "not_satisfied") => {
-      try {
-        const res = await fetch(`${API_BASE}/api/feedback/message`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_key: sessionId,
-            message_id: messageId,
-            feedback: feedbackType,
-          }),
-        });
-        if (!res.ok) throw new Error(`Feedback API error: ${res.status}`);
-        const data = await res.json();
-        console.log("[ChatWidget] Feedback API response:", data);
-      } catch (err) {
-        console.error("[ChatWidget] Feedback API error:", err);
-      }
-    };
-
-    // Feedback handler with Unsatisfied escalation logic
-    const handleFeedback = (messageId: string, type: string) => {
-      setFeedbackMap((prev) => ({ ...prev, [messageId]: type }));
-      if (type === "negative") {
-        sendFeedback(messageId, "not_satisfied");
-        sendToApi("unsatisfied", { unsatisfied_click: true });
-      } else if (type === "positive") {
-        sendFeedback(messageId, "satisfied");
-        // Do NOT show session rating popup here; only show when backend says so
-      }
-    };
-
-    // Session feedback API call
-    const sendSessionFeedback = async (rating: number, comment: string) => {
-      try {
-        const res = await fetch(`${API_BASE}/api/feedback/session`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            session_key: sessionId,
-            rating,
-            comment,
-          }),
-        });
-        if (!res.ok) throw new Error(`Session feedback API error: ${res.status}`);
-        const data = await res.json();
-        console.log("[ChatWidget] Session feedback API response:", data);
-      } catch (err) {
-        console.error("[ChatWidget] Session feedback API error:", err);
-      }
-    };
-
-    // Session rating submit
-    const submitSessionRating = () => {
-      sendSessionFeedback(sessionRating, supportComment);
-      setShowSessionRating(false);
-      setSessionRating(0);
-      setSupportComment("");
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(supportEmail)) {
       setMessages((prev) => [
         ...prev,
-        { text: i.feedback_thank_you || (lang === 'es' ? '¡Gracias por tus comentarios!' : 'Thank you for your feedback!'), isUser: false, time: getTime() },
+        { text: i.invalidEmail, isUser: false, time: getTime() },
       ]);
-    };
+      return;
+    }
 
-    return (
-      <div className="fixed inset-0 z-50 flex flex-col h-screen w-screen bg-background overflow-hidden">
-        {/* Session rating UI (if shown) */}
-        {showSessionRating && (
-          <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6 shadow-lg w-full max-w-xs flex flex-col gap-3">
-              <div className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                  <span className="text-yellow-400 text-xl">★</span>
-                </div>
-                <span>{i.feedback_prompt || (lang === 'es' ? 'Por favor califica tu experiencia.' : 'Please rate your experience.')}</span>
+    setIsSubmittingEmail(true);
+
+    try {
+      // Relay escalation_source from backend only
+      const res = await fetch(`${API_BASE}/api/support/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_email: supportEmail,
+          user_message: supportComment || lastFallbackMessage,
+          language: lang,
+          escalation_source: escalationSource,
+        }),
+      });
+      if (!res.ok) throw new Error(`Support API error: ${res.status}`);
+      const data = await res.json();
+
+      // (Support ticket creation now handled by backend)
+
+      setShowSupportForm(false);
+      setSupportEmail("");
+      setMessages((prev) => [
+        ...prev,
+        {
+          text: data.message || i.emailSuccess,
+          isUser: false,
+          time: getTime(),
+        },
+      ]);
+      setSupportComment("");
+      setSupportSubmitLabel(i.submit);
+      // After closing email popup, if session rating was pending, show it now
+      if (pendingSessionRating) {
+        setShowSessionRating(true);
+        setPendingSessionRating(false);
+      }
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { text: i.emailError, isUser: false, time: getTime() },
+      ]);
+    } finally {
+      setIsSubmittingEmail(false);
+    }
+  };
+
+  // Language dropdown state
+  const [showLangDropdown, setShowLangDropdown] = useState(false);
+
+  // Feedback API call
+  const sendFeedback = async (
+    messageId: string,
+    feedbackType: "satisfied" | "not_satisfied",
+  ) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/feedback/message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_key: sessionId,
+          message_id: messageId,
+          feedback: feedbackType,
+        }),
+      });
+      if (!res.ok) throw new Error(`Feedback API error: ${res.status}`);
+      const data = await res.json();
+      console.log("[ChatWidget] Feedback API response:", data);
+    } catch (err) {
+      console.error("[ChatWidget] Feedback API error:", err);
+    }
+  };
+
+  // Feedback handler with Unsatisfied escalation logic
+  const handleFeedback = (messageId: string, type: string) => {
+    setFeedbackMap((prev) => ({ ...prev, [messageId]: type }));
+    if (type === "negative") {
+      sendFeedback(messageId, "not_satisfied");
+      sendToApi("unsatisfied", { unsatisfied_click: true });
+    } else if (type === "positive") {
+      sendFeedback(messageId, "satisfied");
+      // Do NOT show session rating popup here; only show when backend says so
+    }
+  };
+
+  // Session feedback API call
+  const sendSessionFeedback = async (rating: number, comment: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/feedback/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_key: sessionId,
+          rating,
+          comment,
+        }),
+      });
+      if (!res.ok) throw new Error(`Session feedback API error: ${res.status}`);
+      const data = await res.json();
+      console.log("[ChatWidget] Session feedback API response:", data);
+    } catch (err) {
+      console.error("[ChatWidget] Session feedback API error:", err);
+    }
+  };
+
+  // Session rating submit
+  const submitSessionRating = () => {
+    sendSessionFeedback(sessionRating, supportComment);
+    setShowSessionRating(false);
+    setSessionRating(0);
+    setSupportComment("");
+    setMessages((prev) => [
+      ...prev,
+      {
+        text:
+          i.feedback_thank_you ||
+          (lang === "es"
+            ? "¡Gracias por tus comentarios!"
+            : "Thank you for your feedback!"),
+        isUser: false,
+        time: getTime(),
+      },
+    ]);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col h-screen w-screen bg-background overflow-hidden">
+      {/* Session rating UI (if shown) */}
+      {showSessionRating && (
+        <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 shadow-lg w-full max-w-xs flex flex-col gap-3">
+            <div className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <span className="text-yellow-400 text-xl">★</span>
               </div>
-              <div className="flex gap-1 mb-2 justify-center">
-                {[1,2,3,4,5].map((star) => (
-                  <button
-                    key={star}
-                    className={
-                      star <= sessionRating
-                        ? "text-yellow-400 text-2xl"
-                        : "text-gray-300 text-2xl"
-                    }
-                    onClick={() => setSessionRating(star)}
-                    aria-label={`Rate ${star}`}
-                  >
-                    ★
-                  </button>
-                ))}
-              </div>
-              <textarea
-                className="w-full border rounded p-2 mb-2 text-sm"
-                rows={2}
-                placeholder={i.optional_comment || (lang === 'es' ? 'Comentario opcional' : 'Optional comment')}
-                value={supportComment}
-                onChange={e => setSupportComment(e.target.value)}
-              />
-              <div className="flex gap-2">
+              <span>
+                {i.feedback_prompt ||
+                  (lang === "es"
+                    ? "Por favor califica tu experiencia."
+                    : "Please rate your experience.")}
+              </span>
+            </div>
+            <div className="flex gap-1 mb-2 justify-center">
+              {[1, 2, 3, 4, 5].map((star) => (
                 <button
-                  className="flex-1 bg-primary text-primary-foreground rounded-xl px-4 py-2.5 text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
-                  onClick={submitSessionRating}
-                  disabled={sessionRating < 1 || sessionRating > 5}
+                  key={star}
+                  className={
+                    star <= sessionRating
+                      ? "text-yellow-400 text-2xl"
+                      : "text-gray-300 text-2xl"
+                  }
+                  onClick={() => setSessionRating(star)}
+                  aria-label={`Rate ${star}`}
                 >
-                  {i.submit || (lang === 'es' ? 'Enviar' : 'Submit')}
+                  ★
                 </button>
-                <button
-                  className="px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-background rounded-xl transition-all border border-transparent hover:border-border"
-                  onClick={() => setShowSessionRating(false)}
-                >
-                  {i.cancel || (lang === 'es' ? 'Cancelar' : 'Cancel')}
-                </button>
-              </div>
+              ))}
+            </div>
+            <textarea
+              className="w-full border rounded p-2 mb-2 text-sm"
+              rows={2}
+              placeholder={
+                i.optional_comment ||
+                (lang === "es" ? "Comentario opcional" : "Optional comment")
+              }
+              value={supportComment}
+              onChange={(e) => setSupportComment(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button
+                className="flex-1 bg-primary text-primary-foreground rounded-xl px-4 py-2.5 text-sm font-semibold hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+                onClick={submitSessionRating}
+                disabled={sessionRating < 1 || sessionRating > 5}
+              >
+                {i.submit || (lang === "es" ? "Enviar" : "Submit")}
+              </button>
+              <button
+                className="px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-background rounded-xl transition-all border border-transparent hover:border-border"
+                onClick={() => setShowSessionRating(false)}
+              >
+                {i.cancel || (lang === "es" ? "Cancelar" : "Cancel")}
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
       {/* ──── Header ──── */}
       <header className="flex items-center justify-between px-3 py-3 sm:px-5 sm:py-4 shrink-0 border-b border-border bg-white">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -511,8 +561,22 @@ const ChatWidget = () => {
               aria-expanded={showLangDropdown}
             >
               <span className="md:hidden">{lang === "en" ? "EN" : "ES"}</span>
-              <span className="hidden md:inline">{lang === "en" ? "English" : "Espanol"}</span>
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+              <span className="hidden md:inline">
+                {lang === "en" ? "English" : "Espanol"}
+              </span>
+              <svg
+                className="w-3 h-3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
             </button>
             {showLangDropdown && (
               <div className="absolute right-0 mt-2 w-20 sm:w-24 md:w-32 rounded-lg border border-border bg-white p-1 shadow-lg z-20">
@@ -552,22 +616,48 @@ const ChatWidget = () => {
           {/* Minimize Icon */}
           <button
             type="button"
-            onClick={() => {/* implement minimize logic here */}}
+            onClick={() => {
+              /* implement minimize logic here */
+            }}
             className="p-1.5 text-muted-foreground hover:bg-secondary rounded-md transition-colors flex-shrink-0"
             aria-label="Minimize chat"
             title="Minimize chat"
           >
-            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h8" /></svg>
+            <svg
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h8" />
+            </svg>
           </button>
           {/* Close Icon */}
           <button
             type="button"
-            onClick={() => {/* implement close logic here */}}
+            onClick={() => {
+              /* implement close logic here */
+            }}
             className="p-1.5 text-destructive hover:bg-secondary rounded-md transition-colors flex-shrink-0"
             aria-label="Close chat"
             title="Close chat"
           >
-            <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M18 6L6 18M6 6l12 12" /></svg>
+            <svg
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M18 6L6 18M6 6l12 12"
+              />
+            </svg>
           </button>
         </div>
       </header>
@@ -663,40 +753,45 @@ const ChatWidget = () => {
                       <>
                         <ReactMarkdown>{msg.text}</ReactMarkdown>
                         {/* Show Yes/No confirmation if needed */}
-                        {showRecontactConfirmation && pendingRecontactMsg === msg.text && (
-                          <div className="flex gap-3 mt-3">
-                            <button
-                              className="px-4 py-1.5 rounded-lg bg-primary text-white font-semibold hover:bg-primary/90 transition-all"
-                              onClick={async () => {
-                                if (recontactLoading) return;
-                                setRecontactLoading(true);
-                                setShowRecontactConfirmation(false);
-                                setPendingRecontactMsg(null);
-                                setPendingRecontactData(null);
-                                setRecontactJustHandled(true);
-                                await sendToApi("Contact support again", { recontact_confirmed: true });
-                              }}
-                              disabled={isLoading || recontactLoading}
-                            >
-                              Yes
-                            </button>
-                            <button
-                              className="px-4 py-1.5 rounded-lg bg-muted text-foreground font-semibold hover:bg-muted/80 border border-border transition-all"
-                              onClick={async () => {
-                                if (recontactLoading) return;
-                                setRecontactLoading(true);
-                                setShowRecontactConfirmation(false);
-                                setPendingRecontactMsg(null);
-                                setPendingRecontactData(null);
-                                setRecontactJustHandled(true);
-                                await sendToApi("No thanks", { recontact_declined: true });
-                              }}
-                              disabled={isLoading || recontactLoading}
-                            >
-                              No
-                            </button>
-                          </div>
-                        )}
+                        {showRecontactConfirmation &&
+                          pendingRecontactMsg === msg.text && (
+                            <div className="flex gap-3 mt-3">
+                              <button
+                                className="px-4 py-1.5 rounded-lg bg-primary text-white font-semibold hover:bg-primary/90 transition-all"
+                                onClick={async () => {
+                                  if (recontactLoading) return;
+                                  setRecontactLoading(true);
+                                  setShowRecontactConfirmation(false);
+                                  setPendingRecontactMsg(null);
+                                  setPendingRecontactData(null);
+                                  setRecontactJustHandled(true);
+                                  await sendToApi("Contact support again", {
+                                    recontact_confirmed: true,
+                                  });
+                                }}
+                                disabled={isLoading || recontactLoading}
+                              >
+                                Yes
+                              </button>
+                              <button
+                                className="px-4 py-1.5 rounded-lg bg-muted text-foreground font-semibold hover:bg-muted/80 border border-border transition-all"
+                                onClick={async () => {
+                                  if (recontactLoading) return;
+                                  setRecontactLoading(true);
+                                  setShowRecontactConfirmation(false);
+                                  setPendingRecontactMsg(null);
+                                  setPendingRecontactData(null);
+                                  setRecontactJustHandled(true);
+                                  await sendToApi("No thanks", {
+                                    recontact_declined: true,
+                                  });
+                                }}
+                                disabled={isLoading || recontactLoading}
+                              >
+                                No
+                              </button>
+                            </div>
+                          )}
                       </>
                     )}
                   </div>
@@ -707,53 +802,86 @@ const ChatWidget = () => {
                   {msg.time}
                 </span>
                 {/* Satisfaction prompt bubble with buttons */}
-                {msg.isSatisfactionPrompt && !feedbackMap['__satisfaction__'] && (
-                  <div className="flex items-center gap-2.5 ml-10 mt-2">
-                    <button
-                      onClick={() => {
-                        setFeedbackMap((prev) => ({ ...prev, '__satisfaction__': 'satisfied' }));
-                        setMessages((prev) => [
-                          ...prev,
-                          { text: lang === 'es' ? '¡Me alegra haber podido ayudar! 😊 Avísame si necesitas algo más.' : 'Glad I could help! 😊 Let me know if you need anything else.', isUser: false, time: getTime() },
-                        ]);
-                        setShowSessionRating(true);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary/5 text-primary border border-primary/20 hover:bg-primary/15 hover:border-primary/40 hover:shadow-sm active:scale-95 transition-all"
+                {msg.isSatisfactionPrompt &&
+                  !feedbackMap["__satisfaction__"] && (
+                    <div className="flex items-center gap-2.5 ml-10 mt-2">
+                      <button
+                        onClick={() => {
+                          setFeedbackMap((prev) => ({
+                            ...prev,
+                            __satisfaction__: "satisfied",
+                          }));
+                          setMessages((prev) => [
+                            ...prev,
+                            {
+                              text:
+                                lang === "es"
+                                  ? "¡Me alegra haber podido ayudar! 😊 Avísame si necesitas algo más."
+                                  : "Glad I could help! 😊 Let me know if you need anything else.",
+                              isUser: false,
+                              time: getTime(),
+                            },
+                          ]);
+                          setShowSessionRating(true);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary/5 text-primary border border-primary/20 hover:bg-primary/15 hover:border-primary/40 hover:shadow-sm active:scale-95 transition-all"
+                      >
+                        <SmilePlus size={15} />
+                        {i.satisfied ||
+                          (lang === "es" ? "Satisfecho" : "Satisfied")}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setFeedbackMap((prev) => ({
+                            ...prev,
+                            __satisfaction__: "unsatisfied",
+                          }));
+                          sendToApi("unsatisfied", { unsatisfied_click: true });
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive/5 text-destructive border border-destructive/20 hover:bg-destructive/15 hover:border-destructive/40 hover:shadow-sm active:scale-95 transition-all"
+                      >
+                        <Frown size={15} />
+                        {i.not_satisfied ||
+                          (lang === "es" ? "No satisfecho" : "Not Satisfied")}
+                      </button>
+                    </div>
+                  )}
+                {msg.isSatisfactionPrompt &&
+                  feedbackMap["__satisfaction__"] && (
+                    <div
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ml-10 mt-2 ${
+                        feedbackMap["__satisfaction__"] === "satisfied"
+                          ? "bg-primary/5 border-primary/20"
+                          : "bg-destructive/5 border-destructive/20"
+                      }`}
                     >
-                      <SmilePlus size={15} />
-                      {i.satisfied || (lang === 'es' ? 'Satisfecho' : 'Satisfied')}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setFeedbackMap((prev) => ({ ...prev, '__satisfaction__': 'unsatisfied' }));
-                        sendToApi("unsatisfied", { unsatisfied_click: true });
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive/5 text-destructive border border-destructive/20 hover:bg-destructive/15 hover:border-destructive/40 hover:shadow-sm active:scale-95 transition-all"
-                    >
-                      <Frown size={15} />
-                      {i.not_satisfied || (lang === 'es' ? 'No satisfecho' : 'Not Satisfied')}
-                    </button>
-                  </div>
-                )}
-                {msg.isSatisfactionPrompt && feedbackMap['__satisfaction__'] && (
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ml-10 mt-2 ${
-                    feedbackMap['__satisfaction__'] === 'satisfied'
-                      ? "bg-primary/5 border-primary/20"
-                      : "bg-destructive/5 border-destructive/20"
-                  }`}>
-                    {feedbackMap['__satisfaction__'] === 'satisfied' ? (
-                      <SmilePlus size={15} className="text-primary" />
-                    ) : (
-                      <Frown size={15} className="text-destructive" />
-                    )}
-                    <span className={`text-xs font-semibold ${
-                      feedbackMap['__satisfaction__'] === 'satisfied' ? "text-primary" : "text-destructive"
-                    }`}>
-                      {feedbackMap['__satisfaction__'] === 'satisfied' ? i.satisfied || (lang === 'es' ? 'Satisfecho' : 'Satisfied') : i.not_satisfied || (lang === 'es' ? 'No satisfecho' : 'Not Satisfied')}
-                    </span>
-                    <span className="text-xs text-muted-foreground">— {i.feedback_thank_you || (lang === 'es' ? '¡Gracias por tus comentarios!' : 'Thank you!')}</span>
-                  </div>
-                )}
+                      {feedbackMap["__satisfaction__"] === "satisfied" ? (
+                        <SmilePlus size={15} className="text-primary" />
+                      ) : (
+                        <Frown size={15} className="text-destructive" />
+                      )}
+                      <span
+                        className={`text-xs font-semibold ${
+                          feedbackMap["__satisfaction__"] === "satisfied"
+                            ? "text-primary"
+                            : "text-destructive"
+                        }`}
+                      >
+                        {feedbackMap["__satisfaction__"] === "satisfied"
+                          ? i.satisfied ||
+                            (lang === "es" ? "Satisfecho" : "Satisfied")
+                          : i.not_satisfied ||
+                            (lang === "es" ? "No satisfecho" : "Not Satisfied")}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        —{" "}
+                        {i.feedback_thank_you ||
+                          (lang === "es"
+                            ? "¡Gracias por tus comentarios!"
+                            : "Thank you!")}
+                      </span>
+                    </div>
+                  )}
               </div>
             </div>
           ))}
@@ -797,9 +925,12 @@ const ChatWidget = () => {
               <textarea
                 className="w-full border rounded p-2 mb-2 text-sm"
                 rows={2}
-                placeholder={i.optional_comment || (lang === 'es' ? 'Comentario opcional' : 'Optional comment')}
+                placeholder={
+                  i.optional_comment ||
+                  (lang === "es" ? "Comentario opcional" : "Optional comment")
+                }
                 value={supportComment}
-                onChange={e => setSupportComment(e.target.value)}
+                onChange={(e) => setSupportComment(e.target.value)}
               />
               <div className="flex gap-2">
                 <button
@@ -837,7 +968,7 @@ const ChatWidget = () => {
       <div className="border-t border-border px-4 sm:px-5 py-3 bg-background/80 backdrop-blur-sm shrink-0">
         <form
           className="flex items-center gap-2 max-w-3xl mx-auto"
-          onSubmit={e => {
+          onSubmit={(e) => {
             e.preventDefault();
             if (!message.trim() || isLoading) return;
             const text = message;
@@ -859,14 +990,13 @@ const ChatWidget = () => {
           }}
         >
           <div className="flex items-center border rounded-full px-3 py-2 bg-white shadow-sm mt-4 flex-1">
-            <Upload className="text-primary mr-2" size={20} />
             <input
               ref={inputRef}
               type="text"
               className="flex-1 border-none outline-none bg-transparent text-sm"
               placeholder={i.placeholder}
               value={message}
-              onChange={e => setMessage(e.target.value)}
+              onChange={(e) => setMessage(e.target.value)}
               disabled={isLoading}
               aria-label="Type your message"
             />
