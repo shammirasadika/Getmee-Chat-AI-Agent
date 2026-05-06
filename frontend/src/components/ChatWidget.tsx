@@ -664,7 +664,7 @@ const ChatWidget = () => {
 
       {/* ──── Welcome screen ──── */}
       {!chatStarted && !isMinimized && !isClosed && (
-        <div className="flex-1 overflow-y-auto px-5 py-8 flex flex-col items-center gap-6">
+        <div className="flex-1 overflow-y-auto px-5 py-8 pb-56 flex flex-col items-center gap-6">
           {/* Greeting */}
           <div className="text-center space-y-2">
             {/* Removed chat bubble icon */}
@@ -719,7 +719,7 @@ const ChatWidget = () => {
 
       {/* ──── Chat messages ──── */}
       {chatStarted && !isMinimized && !isClosed && (
-        <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-5 flex flex-col gap-5">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-5 pb-56 flex flex-col gap-5">
           {messages.map((msg, idx) => (
             <div
               key={idx}
@@ -965,9 +965,9 @@ const ChatWidget = () => {
       )}
 
       {/* ──── Input bar — always visible ──── */}
-      <div className="border-t border-border px-4 sm:px-5 py-3 bg-background/80 backdrop-blur-sm shrink-0">
+      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-border px-2 sm:px-4 py-2 sm:py-3 bg-background/90 backdrop-blur-sm w-full">
         <form
-          className="flex items-center gap-2 max-w-3xl mx-auto"
+          className="w-full flex items-center gap-1 sm:gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             if (!message.trim() || isLoading) return;
@@ -989,11 +989,11 @@ const ChatWidget = () => {
             inputRef.current?.focus();
           }}
         >
-          <div className="flex items-center border rounded-full px-3 py-2 bg-white shadow-sm mt-4 flex-1">
+          <div className="flex items-center border rounded-full px-2 sm:px-3 py-1.5 sm:py-2 bg-white shadow-sm flex-1 min-w-0">
             <input
               ref={inputRef}
               type="text"
-              className="flex-1 border-none outline-none bg-transparent text-sm"
+              className="flex-1 min-w-0 border-none outline-none bg-transparent text-sm placeholder:text-muted-foreground"
               placeholder={i.placeholder}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
@@ -1002,7 +1002,7 @@ const ChatWidget = () => {
             />
             <button
               type="submit"
-              className="ml-2 bg-primary hover:bg-green-600 text-primary-foreground rounded-full p-2 transition-colors flex items-center justify-center disabled:opacity-50"
+              className="ml-1 sm:ml-2 bg-primary hover:bg-green-600 text-primary-foreground rounded-full p-2 transition-colors flex items-center justify-center disabled:opacity-50 shrink-0"
               disabled={isLoading || !message.trim()}
               aria-label="Send message"
             >
