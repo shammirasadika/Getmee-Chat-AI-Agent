@@ -272,27 +272,54 @@ class ChatService:
     OVERALL_RATING_INTERVAL = 3  # Configurable interval for overall session rating popup
 
     def _spell_correct(self, text: str, language: str = "en") -> str:
-        """Spell-correct query text before RAG retrieval. Skips short words, numbers, and non-alpha tokens."""
+        """Spell-correct user query before RAG retrieval, without damaging technical terms."""
         try:
             from spellchecker import SpellChecker
+
             lang_code = "es" if language == "es" else "en"
             spell = SpellChecker(language=lang_code)
-            words = text.split()
-            corrected = []
-            for word in words:
-                clean_word = re.sub(r"[^\w]", "", word).lower()
-                # Skip: short words, non-alpha, numbers
-                if len(clean_word) <= 3 or not clean_word.isalpha():
-                    corrected.append(word)
+
+            # Protect project/domain terms
+            spell.word_frequency.load_words([
+                "getmee", "chromadb", "fastapi", "groq", "redis",
+                "postgresql", "mongodb", "rag", "llm", "api",
+                "chatbot", "frontend", "backend", "ingestion"
+            ])
+
+            # Keep words and punctuation separate
+            tokens = re.findall(r"\w+|[^\w\s]", text, re.UNICODE)
+            corrected_tokens = []
+
+            for token in tokens:
+                clean_word = token.lower()
+
+                # Skip short words, numbers, emails/urls fragments, technical/mixed-case words
+                if (
+                    len(clean_word) <= 3
+                    or not clean_word.isalpha()
+                    or token != token.lower()   # protects GetMee, ChromaDB, FastAPI
+                    or clean_word in spell
+                ):
+                    corrected_tokens.append(token)
                     continue
+
                 correction = spell.correction(clean_word)
+
                 if correction and correction != clean_word:
                     print(f"[SpellCheck] '{clean_word}' → '{correction}'", flush=True)
-                    corrected.append(correction)
+                    corrected_tokens.append(correction)
                 else:
-                    corrected.append(word)
-            return " ".join(corrected)
-        except Exception:
+                    corrected_tokens.append(token)
+
+            result = " ".join(corrected_tokens)
+
+            # Fix spacing before punctuation
+            result = re.sub(r"\s+([?.!,;:])", r"\1", result)
+
+            return result
+
+        except Exception as e:
+            print(f"[SpellCheck] skipped: {e}", flush=True)
             return text
 
     def _is_rude_message(self, message: str) -> bool:
@@ -1194,12 +1221,8 @@ class ChatService:
                     message_id=None,
                     session_uuid=str(session_uuid),
                     show_feedback=False,
-                    prefilled_email=support_context.get("support_email"),
-                    support_comment_enabled=False,
-                    show_support_options=False,
-                    allow_recontact=True,
                     show_recontact_confirmation=True,
-                    support_submit_label=None,
+                    prefilled_email=support_context.get("support_email"),
                 )
 
         # 3. Handle recontact_declined (user clicked No)
