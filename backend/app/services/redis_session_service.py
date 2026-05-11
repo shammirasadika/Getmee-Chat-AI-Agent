@@ -31,12 +31,23 @@ class RedisSessionService:
 
     def __init__(self, url: str, ttl: int = DEFAULT_TTL):
         self.url = url
+        # Always use centralized TTL config
         self.ttl = ttl
         self.memory: Dict[str, Any] = {}  # in-memory fallback
         if REDIS_AVAILABLE:
             self.client = aioredis.from_url(url, decode_responses=True)
         else:
             self.client = None
+
+    # Helper: refresh TTL for all session keys (context, messages, feedback, etc.)
+    async def refresh_session_ttl(self, session_key: str):
+        """Refresh TTL for all session keys for this session (called on user activity)."""
+        suffixes = ["context", "messages", "feedback_state", "support_state", "endchat_state"]
+        for suffix in suffixes:
+            key = self._key(session_key, suffix)
+            if self.client:
+                await self.client.expire(key, self.ttl)
+            # in-memory fallback: no TTL support
 
     # ── internal helpers ──────────────────────────
 
@@ -115,7 +126,7 @@ class RedisSessionService:
     # ──────────────────────────────────────────────
 
     async def push_message(self, session_key: str, message: dict):
-        """Append a message to the recent-messages list and trim to max."""
+        """Append a message to the recent-messages list and trim to max. Refresh session TTL on activity."""
         key = self._key(session_key, "messages")
         payload = json.dumps(message)
         if self.client:
