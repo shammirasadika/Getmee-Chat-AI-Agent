@@ -215,14 +215,22 @@ const ChatWidget = () => {
       console.log("[ChatWidget] API response:", data);
 
       // Always show bot answer as chat bubble
+      // Note: fallback_used=true is used for cross-language retrieval (e.g. English fallback for Spanish queries)
+      // These still produce real answers, so we only rely on show_feedback and requires_email to determine
+      // if this counts as a meaningful KB answer (not a support/fallback prompt).
       const isKbAnswer =
         data.show_feedback !== false &&
-        !data.fallback_used &&
         !data.requires_email;
       const newMeaningfulCount = isKbAnswer
         ? meaningfulAnswerCount + 1
         : meaningfulAnswerCount;
       if (isKbAnswer) setMeaningfulAnswerCount(newMeaningfulCount);
+
+      const shouldShowSatisfaction =
+        isKbAnswer && newMeaningfulCount >= 2 && !satisfactionShown;
+      if (shouldShowSatisfaction) {
+        setSatisfactionShown(true);
+      }
 
       setMessages((prev) => {
         const updated = [
@@ -236,8 +244,7 @@ const ChatWidget = () => {
           },
         ];
         // After 2 meaningful KB answers, show a separate satisfaction prompt bubble
-        if (isKbAnswer && newMeaningfulCount >= 2 && !satisfactionShown) {
-          setSatisfactionShown(true);
+        if (shouldShowSatisfaction) {
           updated.push({
             text:
               lang === "es"
