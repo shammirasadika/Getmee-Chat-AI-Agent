@@ -268,8 +268,8 @@ class ChatService:
                     return intent
         return None
 
-    FEEDBACK_INTERVAL = 3  # Configurable interval for per-message feedback
-    OVERALL_RATING_INTERVAL = 3  # Configurable interval for overall session rating popup
+    FEEDBACK_INTERVAL = 2  # Configurable interval for per-message feedback
+    OVERALL_RATING_INTERVAL = 2  # Configurable interval for overall session rating popup
 
     def _spell_correct(self, text: str, language: str = "en") -> str:
         """Spell-correct user query before RAG retrieval, without damaging technical terms."""
@@ -1777,22 +1777,19 @@ class ChatService:
         context = await self.message_service.redis_session.get_context(session_key) or {}
         bot_count = context.get("bot_message_count", 0)
         overall_count = context.get("bot_response_count", 0)
-        # Determine if the answer is meaningful (not fallback, not support, not intent-based small talk/low intent)
+        # Determine if the answer is meaningful (not intent-based small talk/low intent).
+        # Note: fallback_used=True for cross-language retrieval (e.g. English docs → Spanish answer)
+        # still counts as a real KB answer, so it must NOT be excluded here.
         detected_intents = self._detect_intents(request.message)
-        is_meaningful = not (
-            fallback_used
-            or bool(detected_intents & casual_intents)
-        )
+        is_meaningful = not bool(detected_intents & casual_intents)
         if is_meaningful:
             bot_count += 1
             context["bot_message_count"] = bot_count
             overall_count += 1
             context["bot_response_count"] = overall_count
             await self.message_service.redis_session.set_context(session_key, context)
-        # For RAG answers (not fallback), always allow feedback (show_feedback True)
-        show_feedback = not fallback_used or True  # Always show feedback for all normal answers
-        # If you want interval-based feedback, use:
-        # show_feedback = (bot_count % self.FEEDBACK_INTERVAL == 0) if bot_count > 0 else False
+        # Always show feedback for real KB answers (regardless of cross-language fallback)
+        show_feedback = True
         show_overall_rating_popup = (overall_count % self.OVERALL_RATING_INTERVAL == 0) if overall_count > 0 else False
 
         # Debug print removed
